@@ -26,8 +26,8 @@ All rights reserved.
 static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 	off_t size;
 	uid_t uid;
-	time_t atime;
-	time_t ctime;
+	time_t mtime;
+	time_t ctime;  //current time (not change time)
 	time_t subtime;
 	time_t age;
 	char filesystem_root[1024];
@@ -84,13 +84,13 @@ static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 			//(FTW_F)
 			//ignore symlinks
 			if (!S_ISLNK(sb->st_mode)) {
-				//get size, uid, and atime of file
+				//get size, uid, and mtime of file
 				size = sb->st_size;
 				uid  = sb->st_uid;
-				atime = sb->st_atime;
+				mtime = sb->st_mtime;
 
-				//Figure out the difference between the current time and atime
-				subtime = ctime-atime;
+				//Figure out the difference between the current time and mtime
+				subtime = ctime-mtime;
 
 				//If subtime is larger than our age limit then we need to do something
 				if ( subtime > age ) {
