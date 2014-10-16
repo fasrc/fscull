@@ -1,0 +1,10 @@
+*.o
+*.so
+*.pyc
+*.class
+a.out
+
+.DS_Store*
+ehthumbs.db
+Icon?
+Thumbs.db
