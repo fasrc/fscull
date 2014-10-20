@@ -4,19 +4,22 @@ CC = mpicc
 CPP = mpic++
 CFLAGS += -fPIC -I../..
 CPPFLAGS += -fPIC
-LDFLAGS += 
+LDFLAGS +=
 
 
 #--- building
 
-PROG = fscull
+PROGS = fscull retention
 
-all: $(PROG)
+all: $(PROGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(PROG): $(PROG).o
+fscull: fscull.o
+	$(CPP) $(LDFLAGS) $< -lfsmr -ldftw -lmrmpi -o $@
+
+retention: retention.o
 	$(CPP) $(LDFLAGS) $< -lfsmr -ldftw -lmrmpi -o $@
 
 
