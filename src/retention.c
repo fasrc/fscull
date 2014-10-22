@@ -16,6 +16,7 @@ All rights reserved.
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
+#include <string.h>
 
 #include <libdftw.h>
 #include <cmapreduce.h>
@@ -131,7 +132,6 @@ static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 //see http://mapreduce.sandia.gov/doc/reduce.html
 //No reduction needed for this one.
 static void reduce(char *key, int keybytes, char *multivalue, int nvalues, int *valuebytes) {
-	return 0;
 }
 
 
