@@ -299,12 +299,14 @@ int main(int argc, char **argv) {
 				}
 				break;
 			case 'e':
-				if ( exempt_paths_l < MAX_EXEMPT_PATHS ) {
+				if ( exempt_paths_l >= MAX_EXEMPT_PATHS ) {
+					fprintf(stderr, "*** ERROR *** hit MAX_EXEMPT_PATHS\n");
+					exit(EXIT_FAILURE);
+				} else {
 					exempt_paths[exempt_paths_l] = realpath(optarg, NULL);
 					exempt_paths_l++;
 				}
 				break;
-
 			case 'h':
 				fputs(helpstr, stdout);
 				exit(EXIT_SUCCESS);
@@ -322,8 +324,20 @@ int main(int argc, char **argv) {
 	argv[optind-1] = argv[0];
 	argv += (optind - 1);
 	argc -= (optind - 1);
+	
+	//add the trash to the exempt directories (if applicable)
+	if ( exempt_paths_l >= MAX_EXEMPT_PATHS ) {
+		fprintf(stderr, "*** ERROR *** hit MAX_EXEMPT_PATHS\n");
+		exit(EXIT_FAILURE);
+	} else {
+		if ( strncmp(trash_root, data_root, data_root_l) == 0 ) {
+			if (DEBUG) fprintf(stdout, "trash_root is a subdirectory of data_root, exempting\n");
+			exempt_paths[exempt_paths_l] = trash_root;
+			exempt_paths_l++;
+		}
+	}
 
-	//get the directories, from the command line
+	//check that required options have been given
 	if ( data_root == NULL || trash_root == NULL || (retention_window <=0 ||  retention_window == INT_MAX )) {
 		fprintf(stderr, "usage: %s --data-root DATA_ROOT --trash-root TRASH_ROOT --retention-window SECONDS...\n", argv[0]);
 		exit(EXIT_FAILURE);

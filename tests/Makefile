@@ -6,7 +6,7 @@
 DATA_ROOT = test_data_root
 
 #the trash directory
-TRASH_ROOT = test_trash_root
+TRASH_ROOT = test_data_root/_trash
 
 #the retention window in seconds
 RETENTION_WINDOW = 86400
@@ -34,10 +34,10 @@ cull:
 		`find $(DATA_ROOT) -name exempt | xargs -n 1 echo --exempt-path`
 
 verify:
-	test `find $(DATA_ROOT)  -name '*.keepme'   | wc -l` -gt 0
-	test `find $(DATA_ROOT)  -name '*.deleteme' | wc -l` -eq 0
+	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.keepme'   -print | wc -l` -gt 0
+	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.deleteme' -print | wc -l` -eq 0
 	test `find $(TRASH_ROOT) -name '*.keepme'   | wc -l` -eq 0
-	test `find $(TRASH_ROOT)  -name '*.deleteme' | wc -l` -gt 0
+	test `find $(TRASH_ROOT) -name '*.deleteme' | wc -l` -gt 0
 
 clean:
 	./remove_testdata.sh $(DATA_ROOT) $(TRASH_ROOT)
