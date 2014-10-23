@@ -9,8 +9,6 @@ if [ -z "$DATA_ROOT" -o -z "$TRASH_ROOT" ]; then
 	exit 1
 fi
 
-source settings.sh
-
 
 #---
 

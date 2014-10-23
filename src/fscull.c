@@ -6,41 +6,91 @@ All rights reserved.
 */
 
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 #include <time.h>
-#include <limits.h>
-#include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <libgen.h>
+#include <limits.h>
+#include <getopt.h>
+#include <errno.h>
 
 #include <libdftw.h>
 #include <cmapreduce.h>
 #include <fsmr.h>
+
+
+static char *helpstr = \
+"NAME\n"
+"    fscull - distributed filesystem data retention policy enforcement\n"
+"\n"
+"SYNOPSIS\n"
+"    fscull --data-root DATA_ROOT --trash-root TRASH_ROOT ...\n"
+"\n"
+"DESCRIPTION\n"
+"    Culls data from a filesystem hierarchy based upon mtime.  Moves the data\n"
+"    to a trash directory for final deletion later.  Has features for exempting\n"
+"    data.\n"
+"\n"
+"OPTIONS\n"
+"    -d, --data-root PATH\n"
+"        The top-level directory to recursively purge.\n"
+"\n"
+"    -t, --trash-root PATH\n"
+"        The root of the trash bin, where purged files go.\n"
+"\n"
+"    -w, --retention-window SECONDS\n"
+"        The retention window in seconds.  Files with mtime older than this\n"
+"        window are culled.\n"
+"\n"
+"    -e, --exempt-path PATH\n"
+"        A path that's exempt from the policy.  This should be a directory,\n"
+"        though it's not implemented as that yet.\n"
+"\n"
+"    -h, --help\n"
+"        Print this help.\n"
+"\n"
+"REQUIREMENTS\n"
+"    fsmr -- https://github.com/jabrcx/fsmr/\n"
+"\n"
+"BUGS/TODO\n"
+"    n/a\n"
+"\n"
+"AUTHOR\n"
+"    Copyright (c) 2014,  Harvard FAS Research Computing\n"
+"    All rights reserved.\n"
+;
+
+
+//--- basic parameters
+
+//absolute path to the data directory
+static char *data_root = NULL;
+static int data_root_l = 0;  //its strlen (not including the null)
+
+//absolute path to the trash directory
+static char *trash_root = NULL;
+static int trash_root_l = 0;  //its strlen (not including the null)
+
+//the time against which ages are calculated (set at startup, and doesn't change)
+static time_t t_now;
+
+//the retention window in seconds; files older than this are culled
+static time_t retention_window = INT_MAX;
 
 static int exit_status = 0;
 
 char DEBUG = 1;
 
 
-//--- parameters
+//--- exemptions
 
-//absolute path to the data directory
-static char *data_root = NULL;
-int data_root_l = 0;  //its strlen (not including the null)
-
-//absolute path to the trash directory
-static char *trash_root = NULL;
-int trash_root_l = 0;  //its strlen (not including the null)
-
-//the time against which ages are calculated (set at startup, and doesn't change)
-static time_t t_now;
-
-//the retention window; files older than this are culled
-static time_t retention_window = 60 * 60 * 24;  //24 hours
+static int MAX_EXEMPT_PATHS = 4096;
+static char **exempt_paths = NULL;
+static int exempt_paths_l = 0;
 
 
 //--- helpers
@@ -74,14 +124,36 @@ int mkdir_p(char *path, mode_t mode) {
 
 //--- main funcationality
 
-static char cullable(const struct stat *sb) {
+static char exempt(const struct stat *sb, const char *fpath) {
+	/*
+	 * test whether or not the file is exempt
+	 * returns 0 if not, >0 if so, and <0 if error
+	 */
+
+	int i = 0;
+	for (i==0; i<exempt_paths_l; i++) {
+		int l = strlen(exempt_paths[i]);
+		if ( strncmp(fpath, exempt_paths[i], l) == 0 ) {
+			if (DEBUG) fprintf(stdout, "exempt file: %s\n", fpath);
+			return 1;
+		}
+	}
+	if (DEBUG) fprintf(stdout, "non-exempt file: %s\n", fpath);
+	return 0;
+}
+
+static char cullable(const struct stat *sb, const char *fpath) {
 	/*
 	 * test whether or not the file is cullable
 	 *
 	 * returns 0 if no, >0 if yes, and <0 if error (though that's not used yet)
 	 */
-	
-	if ( (t_now - sb->st_atime) > retention_window ) return 1;
+
+	if ( (t_now - sb->st_atime) > retention_window && exempt(sb, fpath)==0) {
+		if (DEBUG) fprintf(stdout, "cullable file: %s\n", fpath);
+		return 1;
+	}
+	if (DEBUG) fprintf(stdout, "non-cullable file: %s\n", fpath);
 	return 0;
 }
 
@@ -96,7 +168,7 @@ static int cull(const char *fpath) {
 	//the absolute path of the file's new location in trash
 	static char tpath[PATH_MAX];
 	static int tpath_l;
-	
+
 	//length of the given path (to save recomputing it many times)
 	static int fpath_l;
 	fpath_l = strlen(fpath);
@@ -105,14 +177,14 @@ static int cull(const char *fpath) {
 	static char tpath_copy[PATH_MAX];
 
 
-	//--- compute tpath -- substitute leading data_path with trash_path
-	
+	//--- compute the destination path in trash (tpath) -- substitute leading data_path with trash_path
+
 	//check that tpath buffer is large enough
 	if ( sizeof(tpath) < (strlen(trash_root) + strlen(fpath) - strlen(data_root) + 1) ) {
 		fprintf(stderr, "*** ERROR *** internal error: attempt to create trash path > PATH_MAX for: %s\n", fpath);
 		return -1;
 	}
-	
+
 	//start with the trash_root
 	memcpy(
 		tpath,
@@ -130,7 +202,7 @@ static int cull(const char *fpath) {
 
 
 	//--- make the directory for it in the trash
-	
+
 	//dirname modified its arg; make a copy
 	memcpy(tpath_copy, tpath, tpath_l+1);
 	if (mkdir_p(dirname(tpath_copy), 0700)) {
@@ -141,7 +213,7 @@ static int cull(const char *fpath) {
 
 
 	//--- move the file
-	
+
 	if (rename(fpath, tpath)) {
 		fprintf(stderr, "*** ERROR *** unable to move file to trash: %s -> %s: errno %d: ", fpath, tpath, errno);
 		perror(NULL);
@@ -160,22 +232,30 @@ static int cull(const char *fpath) {
 static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 	off_t size;
 	uid_t uid;
+	int rc;
 
 	switch (tflag) {
 		case FTW_D:
 			//fpath is a directory
 			//typically don't do anything with it
-			return 0;
+
+			////skipping a directory by returning non-zero does not work
+			//if ( strcmp(fpath, exempt_dir) == 0 ) {
+			//	if (DEBUG) fprintf(stdout, "exempt path: %s\n", fpath);
+			//	return -1;
+			//} else {
+				return 0;
+			//}
 		case FTW_DNR:
 			//fpath is a directory which can't be read
 			fprintf(stderr, "*** ERROR *** unreadable directory: %s\n", fpath);
 			exit_status = EXIT_FAILURE;
-			return 1;
+			return -1;
 		case FTW_NS:
 			//the stat(2) call failed on fpath, which is not a symbolic link
 			fprintf(stderr, "*** ERROR *** unstatable file: %s\n", fpath);
 			exit_status = EXIT_FAILURE;
-			return 1;
+			return -1;
 		default: {
 			//(FTW_F)
 			//typically want to ignore symlinks
@@ -183,16 +263,21 @@ static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 				size = sb->st_size;
 				uid  = sb->st_uid;
 
-				if (cullable(sb) > 0) {
-					if (DEBUG) fprintf(stdout, "cullable file: %s\n", fpath);
+				rc = cullable(sb, fpath);
+				if (rc > 0) {
 					if (cull(fpath)) {
 						fprintf(stderr, "*** ERROR *** failed to cull file: %s\n", fpath);
 						exit_status = EXIT_FAILURE;
+						return -1;
+					} else {
+						fprintf(stdout, "culled file: %s\n", fpath);
 					}
-				} else {
-					if (DEBUG) fprintf(stdout, "non-cullable file: %s\n", fpath);
+				} else if (rc < 0) {
+					fprintf(stderr, "*** ERROR *** failed to determine if file is cullable: %s\n", fpath);
+					exit_status = EXIT_FAILURE;
+					return -1;
 				}
-				
+
 				////emit a {uid:size} key/value
 				//MR_kv_add(kv, (char*)&uid, sizeof(uid_t), (char*)&size, sizeof(off_t));
 			}
@@ -209,20 +294,83 @@ static void reduce(char *key, int keybytes, char *multivalue, int nvalues, int *
 
 
 int main(int argc, char **argv) {
+	//--- option and argument parsing
+
+	exempt_paths = (char **)malloc(MAX_EXEMPT_PATHS * sizeof(char *));
+
+	while (1) {
+		static struct option longopts[] = {
+			{"data-root"       , required_argument, NULL, 'd'},
+			{"trash-root"      , required_argument, NULL, 't'},
+			{"retention-window", required_argument, NULL, 'w'},
+			{"exempt-path"     , required_argument, NULL, 'e'},
+
+			{"help", no_argument, NULL, 'h'},
+			{0, 0, 0, 0}
+		};
+
+		int c = 0;
+		int *indexptr = 0;
+
+		c = getopt_long(argc, argv, "d:t:w:e:h", longopts, indexptr);
+		if (c == -1) break;
+		switch (c) {
+			case 'd':
+				data_root = realpath(optarg, NULL);
+				data_root_l = strlen(data_root);
+				break;
+			case 't':
+				trash_root = realpath(optarg, NULL);
+				trash_root_l = strlen(trash_root);
+				break;
+			case 'w':
+				if ( sscanf(optarg, "%d", &retention_window) <=0 ) {
+					fprintf(stderr, "*** ERROR *** invalid --retention-window: %s\n", optarg);
+					exit(EXIT_FAILURE);
+				}
+				break;
+			case 'e':
+				if ( exempt_paths_l < MAX_EXEMPT_PATHS ) {
+					exempt_paths[exempt_paths_l] = realpath(optarg, NULL);
+					exempt_paths_l++;
+				}
+				break;
+
+			case 'h':
+				fputs(helpstr, stdout);
+				exit(EXIT_SUCCESS);
+
+			case '?':
+				//(getopt_long will have written the error message)
+				exit(EXIT_FAILURE);
+			default:
+				fprintf(stderr, "*** ERROR *** unable to parse command line options\n");
+				exit(EXIT_FAILURE);
+		}
+	}
+
+	//reset argc/argv, forgetting about options above
+	argv[optind-1] = argv[0];
+	argv += (optind - 1);
+	argc -= (optind - 1);
+
 	//get the directories, from the command line
-	if(argc!=3) {
-		fprintf(stderr, "usage: %s DATA_ROOT TRASH_ROOT\n", argv[0]);
+	if ( data_root == NULL || trash_root == NULL || (retention_window <=0 ||  retention_window == INT_MAX )) {
+		fprintf(stderr, "usage: %s --data-root DATA_ROOT --trash-root TRASH_ROOT --retention-window SECONDS...\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
 
-	//get these directories as absolute paths
-	data_root = realpath(argv[1], NULL);
-	data_root_l = strlen(data_root);
-	trash_root = realpath(argv[2], NULL);
-	trash_root_l = strlen(trash_root);
 
-	fprintf(stdout, "running with data_root: %s\n", data_root);
-	fprintf(stdout, "running with trash_root: %s\n", trash_root);
+	//---
+
+	//repeat the basic parameters
+	fprintf(stdout, "running with --data-root: %s\n", data_root);
+	fprintf(stdout, "running with --trash-root: %s\n", trash_root);
+	fprintf(stdout, "running with --retention-window: %d\n", retention_window);
+	int i = 0;
+	for (i==0; i<exempt_paths_l; i++) {
+		fprintf(stdout, "running with an --exempt-path: %s\n", exempt_paths[i]);
+	}
 
 	//get the current time, for calculating file age
 	//set this once at the beginning, so all ages are computed using the same standard and the window doesn't roll

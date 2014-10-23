@@ -1,2 +1,3 @@
-data
-trash
+test_data_root
+test_trash_root
+out.*
