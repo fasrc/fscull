@@ -5,6 +5,6 @@ $ git clone git@github.com:/fasrc/fscull.git
 $ cd fscull/tests/
 $ module load gcc openmpi fsmr dummy_lsf_libs
 $ export PATH=$PWD/../src:$PATH
-$ alias doit='cd ../src && make && cd ../tests && make'
+$ alias doit='cd ../src && make -f Makefile.non_autoconf && cd ../tests && make'
 $ doit
 ```
