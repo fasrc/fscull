@@ -1,4 +1,5 @@
-#suggestion: alias doit='cd ../src && make && cd ../tests && make'
+#suggestion if making iterative changes within source tree:
+#    alias doit='cd ../src && make -f Makefile.non_autoconf && cd ../tests && make'
 
 
 #the directory to create and cull -- be careful, data here will be deleted!

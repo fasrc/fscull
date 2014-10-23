@@ -1,0 +1,68 @@
+.TH FSCULL 1 2014-10-23 FASRC " "
+
+
+.SH NAME
+
+fscull \- distributed filesystem data retention policy enforcement
+
+
+.SH SYNOPSIS
+
+.B fscull
+.BR \-\-data\-root " PATH"
+.BR \-\-trash\-root " PATH"
+.BR \-\-retention\-window " SECONDS"
+...
+
+
+.SH DESCRIPTION
+
+.P
+Culls data from a filesystem hierarchy based upon mtime.
+Moves the data to a trash directory for final deletion later.
+Has features for exempting data.
+
+
+.SH OPTIONS
+
+.TP
+.BR \-d ", " \-\-data\-root " PATH"
+The top-level directory to recursively cull.
+
+.TP
+.BR \-t ", " \-\-trash\-root " PATH"
+The trash bin directory, where purged files go.
+
+.TP
+.BR \-w ", " \-\-retention\-window " SECONDS"
+The retention window in seconds.
+Files with mtime older than this window are culled.
+
+.TP
+.BR \-e ", " \-\-exempt\-path " PATH"
+A path that's exempt from culling.
+This should be a directory, though it's not implemented as that yet.
+
+.TP
+.BR \-h ", " \-\-help
+Print a short synopsis.
+
+
+.SH REQUIREMENTS
+
+.P
+n/a
+
+
+.SH BUGS/TODO
+
+.P
+n/a
+
+
+.SH AUTHOR
+.P
+Copyright (c) 2014, Harvard FAS Research Computing
+.RS
+.RE
+All rights reserved.

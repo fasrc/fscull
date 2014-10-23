@@ -1,2 +1,6 @@
 fscull
 retention
+
+.deps
+Makefile
+Makefile.in

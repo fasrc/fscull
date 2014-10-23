@@ -7,4 +7,15 @@ a.out
 .DS_Store*
 ehthumbs.db
 Icon?
-Thumbs.db
+Thumbs.d
+
+Makefile
+Makefile.in
+aclocal.m4
+autom4te.cache/
+config.*
+configure
+depcomp
+install-sh
+missing
+stamp-h1
