@@ -45,6 +45,10 @@ This should be a directory, though it's not implemented as that yet.
 May be used multiple times, to exempt several directories.
 
 .TP
+.BR \-p ", " \-\-pretend
+Don't actually modify the filesystem, just print out what would be done.
+
+.TP
 .BR \-v ", " \-\-verbose
 Increase the verbosity.
 By default, only same basic operating parameters are printed.

@@ -52,6 +52,7 @@ static time_t retention_window = INT_MAX;
 
 static int exit_status = 0;
 
+char pretend = 0;
 char verbosity = 0;
 
 
@@ -174,19 +175,27 @@ static int cull(const char *fpath) {
 
 	//dirname modified its arg; make a copy
 	memcpy(tpath_copy, tpath, tpath_l+1);
-	if (mkdir_p(dirname(tpath_copy), 0700)) {
-		fprintf(stderr, "*** ERROR *** unable to make directory in trash: %s: errno %d: ", tpath_copy, errno);
-		perror(NULL);
-		return -1;
+	if (!pretend) {
+		if (mkdir_p(dirname(tpath_copy), 0700)) {
+			fprintf(stderr, "*** ERROR *** unable to make directory in trash: %s: errno %d: ", tpath_copy, errno);
+			perror(NULL);
+			return -1;
+		}
+	} else {
+		verbosity>=3 && fprintf(stdout, "pretend mode: skipping directory creation: %s", tpath_copy);
 	}
 
 
 	//--- move the file
 
-	if (rename(fpath, tpath)) {
-		fprintf(stderr, "*** ERROR *** unable to move file to trash: %s -> %s: errno %d: ", fpath, tpath, errno);
-		perror(NULL);
-		return -1;
+	if (!pretend) {
+		if (rename(fpath, tpath)) {
+			fprintf(stderr, "*** ERROR *** unable to move file to trash: %s -> %s: errno %d: ", fpath, tpath, errno);
+			perror(NULL);
+			return -1;
+		}
+	} else {
+		verbosity>=3 && fprintf(stdout, "pretend mode: skipping file move: %s -> %s", fpath, tpath);
 	}
 
 
@@ -276,6 +285,7 @@ int main(int argc, char **argv) {
 			{"retention-window", required_argument, NULL, 'w'},
 			{"exempt-path"     , required_argument, NULL, 'e'},
 
+			{"pretend", no_argument, NULL, 'p'},
 			{"verbose", no_argument, NULL, 'v'},
 
 			{"help", no_argument, NULL, 'h'},
@@ -285,7 +295,7 @@ int main(int argc, char **argv) {
 		int c = 0;
 		int *indexptr = 0;
 
-		c = getopt_long(argc, argv, "d:t:w:e:vh", longopts, indexptr);
+		c = getopt_long(argc, argv, "d:t:w:e:pvh", longopts, indexptr);
 		if (c == -1) break;
 		switch (c) {
 			case 'd':
@@ -312,6 +322,9 @@ int main(int argc, char **argv) {
 				}
 				break;
 
+			case 'p':
+				pretend = 1;
+				break;
 			case 'v':
 				verbosity++;
 				break;
