@@ -10,6 +10,7 @@ All rights reserved.
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -210,7 +211,7 @@ static int cull(const char *fpath) {
 static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 	off_t size;
 	uid_t uid;
-	int rc;
+	int rc = 0;
 
 	switch (tflag) {
 		case FTW_D:
@@ -303,6 +304,12 @@ int main(int argc, char **argv) {
 				data_root_l = strlen(data_root);
 				break;
 			case 't':
+				trash_root = optarg;
+				if (access(trash_root, W_OK)) {
+					fprintf(stderr, "*** ERROR *** unable to access trash root: %s: errno %d: ", trash_root, errno);
+					perror(NULL);
+					exit(EXIT_FAILURE);
+				}
 				trash_root = realpath(optarg, NULL);
 				trash_root_l = strlen(trash_root);
 				break;
