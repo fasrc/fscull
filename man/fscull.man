@@ -1,4 +1,4 @@
-.TH FSCULL 1 2014-10-23 FASRC " "
+.TH FSCULL 1 2014-10-24 FASRC " "
 
 
 .SH NAME
@@ -42,6 +42,15 @@ Files with mtime older than this window are culled.
 .BR \-e ", " \-\-exempt\-path " PATH"
 A path that's exempt from culling.
 This should be a directory, though it's not implemented as that yet.
+May be used multiple times, to exempt several directories.
+
+.TP
+.BR \-v ", " \-\-verbose
+Increase the verbosity.
+By default, only same basic operating parameters are printed.
+Increasing the verbosity by one adds a message for each file culled.
+Increasing again adds a message for each file not culled.
+Increasing again adds all details, for debugging.
 
 .TP
 .BR \-h ", " \-\-help

@@ -52,7 +52,7 @@ static time_t retention_window = INT_MAX;
 
 static int exit_status = 0;
 
-char DEBUG = 1;
+char verbosity = 0;
 
 
 //--- exemptions
@@ -85,7 +85,7 @@ int mkdir_p(char *path, mode_t mode) {
 			return -1;
 		}
 	} else {
-		if (DEBUG) fprintf(stdout, "created directory: %s\n", path);
+		verbosity>=3 && fprintf(stdout, "created directory: %s\n", path);
 	}
 	return 0;
 }
@@ -103,11 +103,11 @@ static char exempt(const struct stat *sb, const char *fpath) {
 	for (i==0; i<exempt_paths_l; i++) {
 		int l = strlen(exempt_paths[i]);
 		if ( strncmp(fpath, exempt_paths[i], l) == 0 ) {
-			if (DEBUG) fprintf(stdout, "exempt file: %s\n", fpath);
+			verbosity>=3 && fprintf(stdout, "exempt file: %s\n", fpath);
 			return 1;
 		}
 	}
-	if (DEBUG) fprintf(stdout, "non-exempt file: %s\n", fpath);
+	verbosity>=3 && fprintf(stdout, "non-exempt file: %s\n", fpath);
 	return 0;
 }
 
@@ -119,10 +119,10 @@ static char cullable(const struct stat *sb, const char *fpath) {
 	 */
 
 	if ( (t_now - sb->st_atime) > retention_window && exempt(sb, fpath)==0) {
-		if (DEBUG) fprintf(stdout, "cullable file: %s\n", fpath);
+		verbosity>=3 && fprintf(stdout, "cullable file: %s\n", fpath);
 		return 1;
 	}
-	if (DEBUG) fprintf(stdout, "non-cullable file: %s\n", fpath);
+	verbosity>=3 && fprintf(stdout, "non-cullable file: %s\n", fpath);
 	return 0;
 }
 
@@ -210,7 +210,7 @@ static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 
 			////skipping a directory by returning non-zero does not work
 			//if ( strcmp(fpath, exempt_dir) == 0 ) {
-			//	if (DEBUG) fprintf(stdout, "exempt path: %s\n", fpath);
+			//	verbosity>=3 && fprintf(stdout, "exempt path: %s\n", fpath);
 			//	return -1;
 			//} else {
 				return 0;
@@ -239,8 +239,10 @@ static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 						exit_status = EXIT_FAILURE;
 						return -1;
 					} else {
-						fprintf(stdout, "culled file: %s\n", fpath);
+						verbosity>=1 && fprintf(stdout, "culled file: %s\n", fpath);
 					}
+				} else if (rc == 0) {
+					verbosity>=2 && fprintf(stdout, "did not cull file: %s\n", fpath);
 				} else if (rc < 0) {
 					fprintf(stderr, "*** ERROR *** failed to determine if file is cullable: %s\n", fpath);
 					exit_status = EXIT_FAILURE;
@@ -274,6 +276,8 @@ int main(int argc, char **argv) {
 			{"retention-window", required_argument, NULL, 'w'},
 			{"exempt-path"     , required_argument, NULL, 'e'},
 
+			{"verbose", no_argument, NULL, 'v'},
+
 			{"help", no_argument, NULL, 'h'},
 			{0, 0, 0, 0}
 		};
@@ -281,7 +285,7 @@ int main(int argc, char **argv) {
 		int c = 0;
 		int *indexptr = 0;
 
-		c = getopt_long(argc, argv, "d:t:w:e:h", longopts, indexptr);
+		c = getopt_long(argc, argv, "d:t:w:e:vh", longopts, indexptr);
 		if (c == -1) break;
 		switch (c) {
 			case 'd':
@@ -307,6 +311,11 @@ int main(int argc, char **argv) {
 					exempt_paths_l++;
 				}
 				break;
+
+			case 'v':
+				verbosity++;
+				break;
+
 			case 'h':
 				fputs(helpstr, stdout);
 				exit(EXIT_SUCCESS);
@@ -324,14 +333,14 @@ int main(int argc, char **argv) {
 	argv[optind-1] = argv[0];
 	argv += (optind - 1);
 	argc -= (optind - 1);
-	
+
 	//add the trash to the exempt directories (if applicable)
 	if ( exempt_paths_l >= MAX_EXEMPT_PATHS ) {
 		fprintf(stderr, "*** ERROR *** hit MAX_EXEMPT_PATHS\n");
 		exit(EXIT_FAILURE);
 	} else {
 		if ( strncmp(trash_root, data_root, data_root_l) == 0 ) {
-			if (DEBUG) fprintf(stdout, "trash_root is a subdirectory of data_root, exempting\n");
+			verbosity>=3 && fprintf(stdout, "trash_root is a subdirectory of data_root, exempting\n");
 			exempt_paths[exempt_paths_l] = trash_root;
 			exempt_paths_l++;
 		}
@@ -347,12 +356,18 @@ int main(int argc, char **argv) {
 	//---
 
 	//repeat the basic parameters
-	fprintf(stdout, "running with --data-root: %s\n", data_root);
-	fprintf(stdout, "running with --trash-root: %s\n", trash_root);
-	fprintf(stdout, "running with --retention-window: %d\n", retention_window);
-	int i = 0;
-	for (i==0; i<exempt_paths_l; i++) {
-		fprintf(stdout, "running with an --exempt-path: %s\n", exempt_paths[i]);
+	if (verbosity>=0) {
+		fprintf(stdout, "running with:\n");
+		fprintf(stdout, "    --data-root: %s\n", data_root);
+		fprintf(stdout, "    --data-root: %s\n", data_root);
+		fprintf(stdout, "    --data-root: %s\n", data_root);
+		fprintf(stdout, "    --trash-root: %s\n", trash_root);
+		int i = 0;
+		for (i==0; i<exempt_paths_l; i++) {
+			fprintf(stdout, "    an --exempt-path: %s\n", exempt_paths[i]);
+		}
+		fprintf(stdout, "    --retention-window: %d\n", retention_window);
+		fprintf(stdout, "    verbosity: %d\n", verbosity);
 	}
 
 	//get the current time, for calculating file age

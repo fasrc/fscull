@@ -31,7 +31,8 @@ cull:
 	mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
 		fscull --data-root $(DATA_ROOT) --trash-root $(TRASH_ROOT) \
 		--retention-window $(RETENTION_WINDOW) \
-		`find $(DATA_ROOT) -name exempt | xargs -n 1 echo --exempt-path`
+		`find $(DATA_ROOT) -name exempt | xargs -n 1 echo --exempt-path` \
+		-vv
 
 verify:
 	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.keepme'   -print | wc -l` -gt 0
