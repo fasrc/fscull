@@ -4,7 +4,7 @@ fscull -- distributed filesystem data retention policy enforcement
 ## To install it:
 
 Make sure you've installed [fsmr](https://github.com/jabrcx/fsmr) and its dependencies ([libcircle](https://github.com/hpc/libcircle), [libdftw](https://github.com/hpc/libdftw), [MR-MPI](http://mapreduce.sandia.gov/), OpenMPI, etc.).
-(At FASRC `module load gcc openmpi fsmr dummy_lsf_libs`.)
+(At FASRC, `module load gcc openmpi fsmr dummy_lsf_libs`.)
 
 Install it in some location `$PREFIX`:
 
@@ -39,15 +39,16 @@ You may also want to remove one -v , to only print out files which are culled.
 See `man fscull` for more info.
 
 
-## To iteratively code and run the tests (at FASRC):
+## To iteratively code and run the tests:
 
 ``` bash
 $ git clone git@github.com:/fasrc/fscull.git
 $ cd fscull/tests/
-$ module load gcc openmpi fsmr dummy_lsf_libs
 $ export PATH=$PWD/../src:$PATH
 $ export MANPATH=$PWD/../share/man:$MANPATH
 $ alias doit='cd ../src && make -f Makefile.non_autoconf && cd ../tests && make'
+
+$ module load gcc openmpi fsmr dummy_lsf_libs  #(at FASRC)
 
 $ doit
 ```
