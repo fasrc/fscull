@@ -1,4 +1,4 @@
-AC_INIT([fscull], [0.0.1-temporary], [rchelp@fas.harvard.edu])
+AC_INIT([fscull], [0.0.0-a], [rchelp@fas.harvard.edu])
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
 

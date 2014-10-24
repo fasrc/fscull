@@ -18,9 +18,9 @@ fscull \- distributed filesystem data retention policy enforcement
 .SH DESCRIPTION
 
 .P
-Culls data from a filesystem hierarchy based upon mtime.
-Moves the data to a trash directory for final deletion later.
-Has features for exempting data.
+Culls files from a filesystem hierarchy based upon mtime.
+Moves the data to a trash directory for later final deletion.
+Has features for exempting sub-directories.
 
 
 .SH OPTIONS
@@ -32,6 +32,7 @@ The top-level directory to recursively cull.
 .TP
 .BR \-t ", " \-\-trash\-root " PATH"
 The trash bin directory, where purged files go.
+Currently, this must already exist, and it must be writable.
 
 .TP
 .BR \-w ", " \-\-retention\-window " SECONDS"
@@ -64,13 +65,43 @@ Print a short synopsis.
 .SH REQUIREMENTS
 
 .P
-n/a
+fsmr -- https://github.com/jabrcx/fsmr
 
 
 .SH BUGS/TODO
 
 .P
 n/a
+
+
+.SH EXAMPLES
+
+To do a dry-run and print out whether each file will be culled or not under a 90-day retention policy:
+
+.P
+.B fscull -vv
+\(rs
+.RS
+.RE
+.B "    "--data-root
+/PATH/TO/THE/DATA/DIRECTORY \(rs
+.RS
+.RE
+.B "    "--trash-root
+/PATH/TO/THE/TRASH/DIRECTORY \(rs
+.RS
+.RE
+.B "    "--retention-window
+$(( 60 * 60 * 24 * 90)) \(rs
+.RS
+.RE
+.B "    "--pretend
+
+To run it for real, remove
+.B --pretend.
+You may also want to remove one
+.B -v,
+to only print out files which are culled.
 
 
 .SH AUTHOR
