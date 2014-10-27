@@ -68,12 +68,14 @@ static int exempt_paths_l = 0;
 
 int mkdir_p(char *path, mode_t mode) {
 	/*
-	 * 	make all components of the given path, like `mkdir -p`
-	 * 	this is recursive
+	 * make all components of the given path, like `mkdir -p`
+	 * this is implemented with recursion
 	 *
-	 * 	as with dirname(3), this may modify path (and I *think* this is okay even with the recursion)
+	 * returns 0 for success, <0 for failure (and writes an error to stderr)
 	 *
-	 * 	returns 0 for success, <0 for failure (and writes an error to stderr)
+	 * as with dirname(3), this may modify path (and I *think* this is okay even with the recursion)
+	 *
+	 * assumes path is not NULL
 	 */
 
 	if (mkdir(path, mode)) {
@@ -98,7 +100,10 @@ int mkdir_p(char *path, mode_t mode) {
 static char exempt(const struct stat *sb, const char *fpath) {
 	/*
 	 * test whether or not the file is exempt
+	 *
 	 * returns 0 if not, >0 if so, and <0 if error
+	 *
+	 * assumes path sb and fpath are not NULL
 	 */
 
 	int i = 0;
@@ -118,9 +123,11 @@ static char cullable(const struct stat *sb, const char *fpath) {
 	 * test whether or not the file is cullable
 	 *
 	 * returns 0 if no, >0 if yes, and <0 if error (though that's not used yet)
+	 *
+	 * assumes path sb and fpath are not NULL
 	 */
 
-	if ( (t_now - sb->st_atime) > retention_window && exempt(sb, fpath)==0) {
+	if ( (t_now - sb->st_atime) > retention_window && exempt(sb, fpath)==0 ) {
 		verbosity>=3 && fprintf(stdout, "cullable file: %s\n", fpath);
 		return 1;
 	}
@@ -134,6 +141,8 @@ static int cull(const char *fpath) {
 	 * this assumes the file is cullable -- it does not double-check!
 	 *
 	 * return 0 for success, <0 for failure (and writes an error to stderr)
+	 *
+	 * assumes fpath is not NULL
 	 */
 
 	//the absolute path of the file's new location in trash
@@ -300,17 +309,23 @@ int main(int argc, char **argv) {
 		if (c == -1) break;
 		switch (c) {
 			case 'd':
-				data_root = realpath(optarg, NULL);
+				data_root = optarg;
+				if (access(data_root, R_OK)) {
+					fprintf(stderr, "*** ERROR *** unable to access data root: %s: errno %d: ", data_root, errno);
+					perror(NULL);
+					exit(EXIT_FAILURE);
+				}
+				data_root = realpath(data_root, NULL);
 				data_root_l = strlen(data_root);
 				break;
 			case 't':
 				trash_root = optarg;
-				if (access(trash_root, W_OK)) {
+				if (access(trash_root, X_OK)) {
 					fprintf(stderr, "*** ERROR *** unable to access trash root: %s: errno %d: ", trash_root, errno);
 					perror(NULL);
 					exit(EXIT_FAILURE);
 				}
-				trash_root = realpath(optarg, NULL);
+				trash_root = realpath(trash_root, NULL);
 				trash_root_l = strlen(trash_root);
 				break;
 			case 'w':
@@ -367,7 +382,7 @@ int main(int argc, char **argv) {
 	}
 
 	//check that required options have been given
-	if ( data_root == NULL || trash_root == NULL || (retention_window <=0 ||  retention_window == INT_MAX )) {
+	if ( data_root == NULL || trash_root == NULL || (retention_window <=0 || retention_window == INT_MAX )) {
 		fprintf(stderr, "usage: %s --data-root DATA_ROOT --trash-root TRASH_ROOT --retention-window SECONDS...\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
