@@ -9,7 +9,7 @@ Make sure you've installed [fsmr](https://github.com/jabrcx/fsmr) and its depend
 Install it in some location `$PREFIX`:
 
 ``` bash
-wget --no-check-certificate https://github.com/fasrc/fscull/raw/master/fscull-0.0.0a.tar.gz
+wget --no-check-certificate https://github.com/fasrc/fscull/raw/master/fscull-0.0.0b.tar.gz
 tar xvf fscull-*.tar.gz
 cd fscull-*
 ./configure --prefix="$PREFIX"
