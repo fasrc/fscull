@@ -127,7 +127,7 @@ static char cullable(const struct stat *sb, const char *fpath) {
 	 * assumes path sb and fpath are not NULL
 	 */
 
-	if ( (t_now - sb->st_atime) > retention_window && exempt(sb, fpath)==0 ) {
+	if ( (t_now - sb->st_mtime) > retention_window && exempt(sb, fpath)==0 ) {
 		verbosity>=3 && fprintf(stdout, "cullable file: %s\n", fpath);
 		return 1;
 	}
@@ -310,7 +310,7 @@ int main(int argc, char **argv) {
 		switch (c) {
 			case 'd':
 				data_root = optarg;
-				if (access(data_root, R_OK)) {
+				if ( access(data_root, R_OK) ) {
 					fprintf(stderr, "*** ERROR *** unable to access data root: %s: errno %d: ", data_root, errno);
 					perror(NULL);
 					exit(EXIT_FAILURE);
@@ -320,7 +320,7 @@ int main(int argc, char **argv) {
 				break;
 			case 't':
 				trash_root = optarg;
-				if (access(trash_root, X_OK)) {
+				if ( access(trash_root, X_OK) ) {
 					fprintf(stderr, "*** ERROR *** unable to access trash root: %s: errno %d: ", trash_root, errno);
 					perror(NULL);
 					exit(EXIT_FAILURE);
