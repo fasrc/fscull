@@ -25,8 +25,8 @@ fi
 
 #--- time calculations
 
-AGE_KEEPME=$(( RETENTION_WINDOW / 2 ))  #1/2 the retention window
-AGE_DELETEME=$(( RETENTION_WINDOW / 2 * 3 ))  #3/2 the retention window
+AGE_KEEPME=$(( RETENTION_WINDOW * 9 / 10 ))  #9/10 the retention window
+AGE_DELETEME=$(( RETENTION_WINDOW * 3 / 2 ))  #3/2 the retention window
 
 #timestamps in seconds since the epoch
 T_NOW=$(date +%s)
@@ -43,7 +43,7 @@ D_DELETEME=$(date -d @$T_DELETEME +'%Y-%m-%d %H:%M:%S')
 
 for d in "$DATA_ROOT" "$DATA_ROOT"/subdir_a "$DATA_ROOT"/subdir_a/subdir_b; do
 	mkdir "$d"
-	
+
 	#--- basic data
 	for f in \
 		foo \

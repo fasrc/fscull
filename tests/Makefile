@@ -21,6 +21,11 @@ NPROCS = 3
 EXTRA_MPIRUN_ARGS = --mca btl self,tcp
 #EXTRA_MPIRUN_ARGS = $(EXTRA_MPIRUN_ARGS) --output-filename out --tag-output
 
+#expected results
+NUM_TOTAL = 21
+NUM_KEEPME = 12
+NUM_DELETEME = 9
+
 
 all:
 	@echo
@@ -59,14 +64,14 @@ cull:
 		$(OPTS)
 
 verify:
-	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.keepme'   -print | wc -l` -gt 0
+	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.keepme'   -print | wc -l` -eq $(NUM_KEEPME)
 	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.deleteme' -print | wc -l` -eq 0
 	test `find $(TRASH_ROOT) -name '*.keepme'   | wc -l` -eq 0
-	test `find $(TRASH_ROOT) -name '*.deleteme' | wc -l` -gt 0
+	test `find $(TRASH_ROOT) -name '*.deleteme' | wc -l` -eq $(NUM_DELETEME)
 
 verify_pretend:
-	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.keepme'   -print | wc -l` -gt 0
-	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.deleteme' -print | wc -l` -gt 0
+	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.keepme'   -print | wc -l` -eq $(NUM_KEEPME)
+	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.deleteme' -print | wc -l` -eq $(NUM_DELETEME)
 	test `find $(TRASH_ROOT) -name '*.keepme'   | wc -l` -eq 0
 	test `find $(TRASH_ROOT) -name '*.deleteme' | wc -l` -eq 0
 
