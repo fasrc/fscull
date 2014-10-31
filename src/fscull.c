@@ -341,6 +341,11 @@ int main(int argc, char **argv) {
 					fprintf(stderr, "*** ERROR *** hit MAX_EXEMPT_PATHS\n");
 					exit(EXIT_FAILURE);
 				} else {
+					if ( access(optarg, F_OK) ) {
+						fprintf(stderr, "*** ERROR *** exempt paths must currently exist: %s: errno %d: ", optarg, errno);
+						perror(NULL);
+						exit(EXIT_FAILURE);
+					}
 					exempt_paths[exempt_paths_l] = realpath(optarg, NULL);
 					exempt_paths_l++;
 				}

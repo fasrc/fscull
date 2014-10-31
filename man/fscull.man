@@ -71,7 +71,7 @@ fsmr -- https://github.com/jabrcx/fsmr
 .SH BUGS/TODO
 
 .P
-n/a
+Find a better way to compute absolute paths of --exempt-path and other arguments that doesn't require they already exist (but also allow them to pop into existence later).
 
 
 .SH EXAMPLES
