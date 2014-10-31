@@ -227,7 +227,9 @@ static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 			//fpath is a directory
 			//typically don't do anything with it
 
-			////skipping a directory by returning non-zero does not work
+			////FIXME skipping a directory by returning non-zero does not work
+			////it would be much better to patch dftw to not even enter --exempt-path directories
+			////as-is, this still processes every single file, comparing to the exempt path just to end up ignoring it
 			//if ( strcmp(fpath, exempt_dir) == 0 ) {
 			//	verbosity>=3 && fprintf(stdout, "exempt path: %s\n", fpath);
 			//	return -1;

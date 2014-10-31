@@ -18,9 +18,9 @@ fscull \- distributed filesystem data retention policy enforcement
 .SH DESCRIPTION
 
 .P
-Culls files from a filesystem hierarchy based upon mtime.
-Moves the data to a trash directory for later final deletion.
-Has features for exempting sub-directories.
+fscull walks a filesystem and moves files older than a specified age to a trash bin.
+It's a distributed application using MPI (really just a wrapper around rename(2), which is then used as the map in fsmr mapreduce).
+It's meant to be deployed on HPC storage such as Lustre, where it can use 100s of processes to scan and move 100s of millions of files on a scale of hours.
 
 
 .SH OPTIONS
