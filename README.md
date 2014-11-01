@@ -12,13 +12,13 @@ It's meant to be deployed on HPC storage such as Lustre, where it can use 100s o
 
 The repo provides a standard GNU-toolchain-style tarball for building.
 
-Make sure you've installed [fsmr](https://github.com/jabrcx/fsmr) and its dependencies ([libcircle](https://github.com/hpc/libcircle), [libdftw](https://github.com/hpc/libdftw), [MR-MPI](http://mapreduce.sandia.gov/), [OpenMPI](http://www.open-mpi.org/), etc.).
+Make sure you've installed [fsmr](https://github.com/jabrcx/fsmr) and its dependencies ([libcircle](https://github.com/hpc/libcircle), [libdftw](https://github.com/hpc/libdftw), [MR-MPI](http://mapreduce.sandia.gov/), [OpenMPI](http://www.open-mpi.org/)).
 (At FASRC, `module load gcc openmpi fsmr dummy_lsf_libs`.)
 
 Download it:
 
 ``` bash
-wget --no-check-certificate https://github.com/fasrc/fscull/raw/master/fscull-0.0.0b.tar.gz
+wget https://github.com/fasrc/fscull/raw/master/fscull-0.0.1.tar.gz
 tar xvf fscull-*.tar.gz
 cd fscull-*
 ```
@@ -53,13 +53,13 @@ mpirun [MPI_OPTIONS] fscull -vv \
 
 To run it for real, remove `--pretend`.
 To add directories that are exempt from the policy, use `--exempt`.
-Use the MPI option `--output-filename` to send each rank's output to a separate file (otherwise you won't be able to grep out the filenames that were affected from the interleaved output).
+Use the MPI option `--output-filename` to send each rank's output to a separate file (otherwise you won't be able to grep out the filenames that were affected since output lines will be split and interleaved).
 You may also want to remove one -v , to only print out files which are culled.
 
 See `man fscull` for more info.
 
 
-## To iteratively code and run the tests:
+## To iteratively develop the code and run the tests:
 
 Get setup:
 
@@ -71,7 +71,7 @@ $ export MANPATH=$PWD/../share/man:$MANPATH
 $ module load gcc openmpi fsmr dummy_lsf_libs  #(at FASRC)
 ```
 
-Then iteratively make changes to files in ../src/ and run:
+Then iteratively make changes to files in `../src/` and run:
 
 ``` bash
 $ cd ../src && make -f Makefile.non_autoconf && cd ../tests && make

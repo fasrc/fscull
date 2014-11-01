@@ -32,7 +32,6 @@ The top-level directory to recursively cull.
 .TP
 .BR \-t ", " \-\-trash\-root " PATH"
 The trash bin directory, where purged files go.
-Currently, this must already exist, and it must be writable.
 
 .TP
 .BR \-w ", " \-\-retention\-window " SECONDS"
@@ -44,6 +43,7 @@ Files with mtime older than this window are culled.
 A path that's exempt from culling.
 This should be a directory, though it's not implemented as that yet.
 May be used multiple times, to exempt several directories.
+Due to the limitations of how this is coded, the directories must all exist.
 
 .TP
 .BR \-p ", " \-\-pretend
@@ -70,8 +70,14 @@ fsmr -- https://github.com/jabrcx/fsmr
 
 .SH BUGS/TODO
 
-.P
+.IP \(bu
+Add an option to immediately delete rather than move to trash.
+.IP \(bu
 Find a better way to compute absolute paths of --exempt-path and other arguments that doesn't require they already exist (but also allow them to pop into existence later).
+.IP \(bu
+Patch dftw to be able to not even enter --exempt-path directories.
+.IP \(bu
+Add additional criteria, e.g. size, owner, group, etc.
 
 
 .SH EXAMPLES
@@ -100,9 +106,16 @@ $(( 60 * 60 * 24 * 90)) \(rs
 
 To run it for real, remove
 .B --pretend.
+To add directories that are exempt from the policy, use
+.B --exempt.
+Use the MPI option 
+.B --output-filename
+to send each rank's output to a separate file (otherwise you won't be able to grep out the filenames that were affected from the interleaved output).
 You may also want to remove one
 .B -v,
 to only print out files which are culled.
+
+See the README for more details.
 
 
 .SH AUTHOR
