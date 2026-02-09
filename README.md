@@ -68,7 +68,7 @@ $ git clone git@github.com:/fasrc/fscull.git
 $ cd fscull/tests/
 $ export PATH=$PWD/../src:$PATH
 $ export MANPATH=$PWD/../share/man:$MANPATH
-$ module load gcc openmpi fsmr dummy_lsf_libs  #(at FASRC)
+$ module load gcc/13.2.0-fasrc01 openmpi/5.0.2-fasrc01 #(at FASRC)
 ```
 
 Then iteratively make changes to files in `../src/` and run:
