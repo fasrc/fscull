@@ -63,5 +63,14 @@ for d in "$DATA_ROOT"/exempt "$DATA_ROOT"/subdir_a/exempt "$DATA_ROOT"/subdir_a/
 	touch --date="$D_DELETEME" "$d"/foo.keepme
 done
 
+#--- mkdir_p() test data
+#
+# this creates keepme/deleteme files in a deep directory hierarchy where the
+# corresponding trash hierarchy does not yet exist.
+BUG_REPRO_DIR="$DATA_ROOT"/mkdir_p_repro/level_1/level_2/level_3
+mkdir -p "$BUG_REPRO_DIR"
+touch --date="$D_KEEPME" "$BUG_REPRO_DIR"/mkdir_p_bug.keepme
+touch --date="$D_DELETEME" "$BUG_REPRO_DIR"/mkdir_p_bug.deleteme
+
 
 mkdir "$TRASH_ROOT"

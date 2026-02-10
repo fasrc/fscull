@@ -23,8 +23,8 @@ EXTRA_MPIRUN_ARGS = --mca btl self,tcp
 
 #expected results
 NUM_TOTAL = 21
-NUM_KEEPME = 12
-NUM_DELETEME = 9
+NUM_KEEPME = 13
+NUM_DELETEME = 10
 
 
 all:
