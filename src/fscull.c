@@ -69,15 +69,15 @@ static int exempt_paths_l = 0;
 int mkdir_p(char *path, mode_t mode) {
 	/*
 	 * make all components of the given path, like `mkdir -p`
-	 * this is implemented iteratively
+	 * this is implemented recursively
 	 *
 	 * returns 0 for success, <0 for failure (and writes an error to stderr)
 	 *
 	 * assumes path is not NULL
 	 */
 
-	char tmp[PATH_MAX];
-	char *p;
+	char path_copy[PATH_MAX];
+	char parent_copy[PATH_MAX];
 	int n;
 	size_t len;
 	struct stat st;
@@ -88,7 +88,7 @@ int mkdir_p(char *path, mode_t mode) {
 		return -1;
 	}
 
-	n = snprintf(tmp, sizeof(tmp), "%s", path);
+	n = snprintf(path_copy, sizeof(path_copy), "%s", path);
 	if (n < 0 || n >= PATH_MAX) {
 		errno = ENAMETOOLONG;
 		perror(path);
@@ -97,52 +97,59 @@ int mkdir_p(char *path, mode_t mode) {
 	len = (size_t)n;
 
 	//normalize a trailing slash (except for '/')
-	while (len > 1 && tmp[len - 1] == '/') {
-		tmp[len - 1] = '\0';
+	while (len > 1 && path_copy[len - 1] == '/') {
+		path_copy[len - 1] = '\0';
 		len--;
 	}
 
-	if (strcmp(tmp, "/") == 0 || strcmp(tmp, ".") == 0) {
+	if (strcmp(path_copy, "/") == 0 || strcmp(path_copy, ".") == 0) {
 		return 0;
 	}
 
-	p = tmp;
-	// Walk each '/' boundary, temporarily terminate the string there, and create
-	// that ancestor directory before restoring the slash.
-	while ((p = strchr(p + 1, '/')) != NULL) {
-		*p = '\0';
-		if (mkdir(tmp, mode) != 0) {
-			if (errno != EEXIST) {
-				perror(tmp);
-				*p = '/';
-				return -1;
-			}
-			// mkdir reported EEXIST; verify the existing path is actually a
-			// directory (not a non-directory object).
-			if (stat(tmp, &st) != 0 || !S_ISDIR(st.st_mode)) {
-				errno = ENOTDIR;
-				perror(tmp);
-				*p = '/';
-				return -1;
-			}
-		}
-		*p = '/';
+	if (mkdir(path_copy, mode) == 0) {
+		verbosity>=3 && fprintf(stdout, "created directory: %s\n", path_copy);
+		return 0;
 	}
 
-	if (mkdir(tmp, mode) != 0) {
-		if (errno != EEXIST) {
-			perror(tmp);
-			return -1;
+	if (errno == EEXIST) {
+		if (stat(path_copy, &st) == 0 && S_ISDIR(st.st_mode)) {
+			return 0;
 		}
-		if (stat(tmp, &st) != 0 || !S_ISDIR(st.st_mode)) {
+		errno = ENOTDIR;
+		perror(path_copy);
+		return -1;
+	}
+
+	if (errno != ENOENT) {
+		perror(path_copy);
+		return -1;
+	}
+
+	n = snprintf(parent_copy, sizeof(parent_copy), "%s", path_copy);
+	if (n < 0 || n >= PATH_MAX) {
+		errno = ENAMETOOLONG;
+		perror(path_copy);
+		return -1;
+	}
+
+	if (mkdir_p(dirname(parent_copy), mode)) {
+		return -1;
+	}
+
+	if (mkdir(path_copy, mode) != 0) {
+		if (errno == EEXIST) {
+			if (stat(path_copy, &st) == 0 && S_ISDIR(st.st_mode)) {
+				return 0;
+			}
 			errno = ENOTDIR;
-			perror(tmp);
+			perror(path_copy);
 			return -1;
 		}
-	} else {
-		verbosity>=3 && fprintf(stdout, "created directory: %s\n", path);
+		perror(path_copy);
+		return -1;
 	}
 
+	verbosity>=3 && fprintf(stdout, "created directory: %s\n", path_copy);
 	return 0;
 }
 
