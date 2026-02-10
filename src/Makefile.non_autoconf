@@ -59,7 +59,10 @@ FSMR_CFLAGS := $(CFLAGS) $(VENDOR_INCLUDE) $(MRMPI_INCLUDE)
 FSMR_CPPFLAGS := $(VENDOR_INCLUDE) $(MRMPI_INCLUDE) $(VENDOR_LIBPATH) $(MRMPI_LIB) $(VENDOR_RPATH)
 LIBDFTW_CPPFLAGS := -I$(VENDOR_PREFIX)/include -include stddef.h
 LIBDFTW_LDFLAGS := -L$(VENDOR_PREFIX)/lib
-STATIC_LIBS ?= -lstdc++ -lm
+# MR-MPI built from C++ may require legacy MPI C++ binding symbols at link time.
+# Set MPI_CXX_LIBS= to empty on systems that do not ship libmpi_cxx.
+MPI_CXX_LIBS ?= -lmpi_cxx
+STATIC_LIBS ?= $(MPI_CXX_LIBS) -lstdc++ -lm
 
 PROGS = fscull retention
 
