@@ -64,7 +64,7 @@ See `man fscull` for more info.
 Get setup:
 
 ``` bash
-$ git clone git@github.com:/fasrc/fscull.git
+$ git clone --recurse-submodules git@github.com:/fasrc/fscull.git
 $ cd fscull/tests/
 $ export PATH=$PWD/../src:$PATH
 $ export MANPATH=$PWD/../share/man:$MANPATH
