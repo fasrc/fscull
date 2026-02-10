@@ -29,8 +29,7 @@ jobs:
           make -f Makefile.non_autoconf
 
       - name: Run tests
-        env:
-          PATH: ${{ github.workspace }}/src:${{ env.PATH }}
         run: |
+          export PATH="${GITHUB_WORKSPACE}/src:${PATH}"
           cd tests
           make EXTRA_MPIRUN_ARGS="--mca btl self,tcp --oversubscribe"
