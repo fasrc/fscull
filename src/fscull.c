@@ -51,7 +51,7 @@ static time_t t_now;
 //the retention window in seconds; files older than this are culled
 static time_t retention_window = INT_MAX;
 
-static int exit_status = 0;
+static int exit_status = EXIT_SUCCESS;
 
 char pretend = 0;
 char verbosity = 0;
@@ -69,28 +69,80 @@ static int exempt_paths_l = 0;
 int mkdir_p(char *path, mode_t mode) {
 	/*
 	 * make all components of the given path, like `mkdir -p`
-	 * this is implemented with recursion
+	 * this is implemented iteratively
 	 *
 	 * returns 0 for success, <0 for failure (and writes an error to stderr)
-	 *
-	 * as with dirname(3), this may modify path (and I *think* this is okay even with the recursion)
 	 *
 	 * assumes path is not NULL
 	 */
 
-	if (mkdir(path, mode)) {
-		if (errno == EEXIST) {
-			return 0;
-		} else if (errno == ENOENT) {
-			return mkdir_p(dirname(path), mode);
-		} else {
-			fprintf(stderr, "*** ERROR *** mkdir failed: %s: errno %d: ", path, errno);
-			perror(NULL);
+	char tmp[PATH_MAX];
+	char *p;
+	int n;
+	size_t len;
+	struct stat st;
+
+	if (path == NULL || path[0] == '\0') {
+		errno = EINVAL;
+		perror("mkdir_p");
+		return -1;
+	}
+
+	n = snprintf(tmp, sizeof(tmp), "%s", path);
+	if (n < 0 || n >= PATH_MAX) {
+		errno = ENAMETOOLONG;
+		perror(path);
+		return -1;
+	}
+	len = (size_t)n;
+
+	//normalize a trailing slash (except for '/')
+	while (len > 1 && tmp[len - 1] == '/') {
+		tmp[len - 1] = '\0';
+		len--;
+	}
+
+	if (strcmp(tmp, "/") == 0 || strcmp(tmp, ".") == 0) {
+		return 0;
+	}
+
+	p = tmp;
+	// Walk each '/' boundary, temporarily terminate the string there, and create
+	// that ancestor directory before restoring the slash.
+	while ((p = strchr(p + 1, '/')) != NULL) {
+		*p = '\0';
+		if (mkdir(tmp, mode) != 0) {
+			if (errno != EEXIST) {
+				perror(tmp);
+				*p = '/';
+				return -1;
+			}
+			// mkdir reported EEXIST; verify the existing path is actually a
+			// directory (not a non-directory object).
+			if (stat(tmp, &st) != 0 || !S_ISDIR(st.st_mode)) {
+				errno = ENOTDIR;
+				perror(tmp);
+				*p = '/';
+				return -1;
+			}
+		}
+		*p = '/';
+	}
+
+	if (mkdir(tmp, mode) != 0) {
+		if (errno != EEXIST) {
+			perror(tmp);
+			return -1;
+		}
+		if (stat(tmp, &st) != 0 || !S_ISDIR(st.st_mode)) {
+			errno = ENOTDIR;
+			perror(tmp);
 			return -1;
 		}
 	} else {
 		verbosity>=3 && fprintf(stdout, "created directory: %s\n", path);
 	}
+
 	return 0;
 }
 
@@ -426,7 +478,5 @@ int main(int argc, char **argv) {
 		exit(EXIT_FAILURE);
 	}
 
-	////FIXME do this properly
-	//exit(exit_status);
-	exit(EXIT_SUCCESS);
+	exit(exit_status);
 }

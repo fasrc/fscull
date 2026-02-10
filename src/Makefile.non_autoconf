@@ -61,7 +61,7 @@ LIBDFTW_CPPFLAGS := -I$(VENDOR_PREFIX)/include -include stddef.h
 LIBDFTW_LDFLAGS := -L$(VENDOR_PREFIX)/lib
 # MR-MPI built from C++ may require legacy MPI C++ binding symbols at link time.
 # Set MPI_CXX_LIBS= to empty on systems that do not ship libmpi_cxx.
-MPI_CXX_LIBS ?= -lmpi_cxx
+MPI_CXX_LIBS ?=
 STATIC_LIBS ?= $(MPI_CXX_LIBS) -lstdc++ -lm
 
 PROGS = fscull retention
