@@ -1,12 +1,12 @@
 [submodule "vendor/fsmr"]
 	path = vendor/fsmr
-	url = https://github.com/jabrcx/fsmr.git
+	url = https://github.com/fasrc/fsmr.git
 [submodule "vendor/libdftw"]
 	path = vendor/libdftw
-	url = https://github.com/hpc/libdftw
+	url = https://github.com/fasrc/libdftw.git
 [submodule "vendor/libcircle"]
 	path = vendor/libcircle
-	url = http://github.com/hpc/libcircle
+	url = https://github.com/fasrc/libcircle.git
 [submodule "vendor/mapreduce"]
 	path = vendor/mapreduce
-	url = https://github.com/sandialabs/mapreduce
+	url = https://github.com/fasrc/mapreduce.git
