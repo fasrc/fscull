@@ -18,17 +18,16 @@ Make sure you've installed [fsmr](https://github.com/jabrcx/fsmr) and its depend
 Download it:
 
 ``` bash
-wget https://github.com/fasrc/fscull/raw/master/fscull-0.0.1.tar.gz
-tar xvf fscull-*.tar.gz
-cd fscull-*
-```
+git clone --recurse-submodules git@github.com:/fasrc/fscull.git
+cd fscull
+``` bash
 
-Install it in some location `$PREFIX`:
+Build and install it in some location `$PREFIX`:
 
 ``` bash
-./configure --prefix="$PREFIX"
+module load gcc/13.2.0-fasrc01 openmpi/5.0.2-fasrc01 #(at FASRC)
 make
-make install
+make install PREFIX="$PREFIX"
 ```
 
 And setup your environment to find it:
@@ -59,20 +58,12 @@ You may also want to remove one -v , to only print out files which are culled.
 See `man fscull` for more info.
 
 
-## To iteratively develop the code and run the tests:
+## To run the tests:
 
-Get setup:
-
-``` bash
-$ git clone --recurse-submodules git@github.com:/fasrc/fscull.git
-$ cd fscull/tests/
-$ export PATH=$PWD/../src:$PATH
-$ export MANPATH=$PWD/../share/man:$MANPATH
-$ module load gcc/13.2.0-fasrc01 openmpi/5.0.2-fasrc01 #(at FASRC)
-```
-
-Then iteratively make changes to files in `../src/` and run:
+After building, start an interactive allocation with at least 3 tasks, then run the tests:
 
 ``` bash
-$ cd ../src && make -f Makefile.non_autoconf && cd ../tests && make
+salloc -p test -t 10 -n 3 --mem=4g
+module load gcc/13.2.0-fasrc01 openmpi/5.0.2-fasrc01 #(at FASRC)
+make test
 ```

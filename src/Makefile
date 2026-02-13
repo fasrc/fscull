@@ -66,7 +66,7 @@ STATIC_LIBS ?= $(MPI_CXX_LIBS) -lstdc++ -lm
 
 PROGS = fscull retention
 
-.PHONY: all test clean
+.PHONY: all clean
 
 
 #--- building
@@ -130,13 +130,6 @@ $(LIBCIRCLE_BOOTSTRAP): $(LIBCIRCLE_DIR)/configure.ac $(LIBCIRCLE_DIR)/Makefile.
 $(LIBDFTW_BOOTSTRAP): $(LIBDFTW_DIR)/configure.ac $(LIBDFTW_DIR)/Makefile.am
 	cd $(LIBDFTW_DIR) && ./autogen.sh
 	touch $@
-
-
-#--- testing
-
-test:
-	$(error There are no tests here.  See ../tests/)
-
 
 #--- cleaning
 

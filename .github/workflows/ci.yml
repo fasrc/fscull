@@ -25,11 +25,8 @@ jobs:
 
       - name: Build fscull
         run: |
-          cd src
-          make -f Makefile.non_autoconf MPI_CXX_LIBS=-lmpi_cxx
+          make MPI_CXX_LIBS=-lmpi_cxx
 
       - name: Run tests
         run: |
-          export PATH="${GITHUB_WORKSPACE}/src:${PATH}"
-          cd tests
-          make EXTRA_MPIRUN_ARGS="--mca btl self,tcp --oversubscribe"
+          make test EXTRA_MPIRUN_ARGS="--mca btl self,tcp --oversubscribe"
