@@ -10,12 +10,17 @@ It's meant to be deployed on HPC storage such as Lustre, where it can use 100s o
 
 ## To install it:
 
-The repo provides a standard GNU-toolchain-style tarball for building.
+fscull depends on an MPI implementation (tested with Open-MPI).
 
-Make sure you've installed [fsmr](https://github.com/jabrcx/fsmr) and its dependencies ([libcircle](https://github.com/hpc/libcircle), [libdftw](https://github.com/hpc/libdftw), [MR-MPI](http://mapreduce.sandia.gov/), [OpenMPI](http://www.open-mpi.org/)).
-(At FASRC, `module load gcc openmpi fsmr dummy_lsf_libs`.)
+Additionally, fscull has a build-time dependency on several third-party libraries, including:
+* [fsmr](https://github.com/jabrcx/fsmr)
+* [libcircle](https://github.com/hpc/libcircle)
+* [libdftw](https://github.com/hpc/libdftw)
+* [MR-MPI](https://github.com/sandialabs/mapreduce)
 
-Download it:
+These have been as git submodules to the ./vendor directory in the git repository.
+
+To download fscull, clone the repository, ensuring the `--recurse-submodules` is specified to fetch the vendored repositories:
 
 ``` bash
 git clone --recurse-submodules git@github.com:/fasrc/fscull.git
