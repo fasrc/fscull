@@ -1,0 +1,32 @@
+name: Build and Test
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install OpenMPI and Build Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            openmpi-bin \
+            libopenmpi-dev \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config
+
+      - name: Build fscull
+        run: |
+          make MPI_CXX_LIBS=-lmpi_cxx
+
+      - name: Run tests
+        run: |
+          make test EXTRA_MPIRUN_ARGS="--mca btl self,tcp --oversubscribe"
