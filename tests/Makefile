@@ -25,6 +25,7 @@ LONGPATH_DATA_ROOT = /tmp/fscull_longpath_test_data_root
 LONGPATH_TRASH_ROOT = /tmp/fscull_longpath_test_data_root/_trash
 EXTERNAL_TRASH_ROOT = external_trash_root
 COLLISION_LOG = collision_cull.log
+SAFETY_LOG = safety_fail.log
 
 #expected results
 NUM_TOTAL = 22
@@ -35,6 +36,8 @@ NUM_DELETEME_LONGPATH = 12
 NUM_KEEPME_COLLISION = 14
 NUM_DELETEME_COLLISION = 11
 NUM_DELETEME_UNCULLED_COLLISION = 1
+NUM_DELETEME_SAFETY = 12
+NUM_DELETEME_UNCULLED_SAFETY = 2
 
 # This suite does not currently exercise the FTW_DNR/FTW_NS traversal error
 # branches in fscull.c. In this root-running devcontainer they are difficult to
@@ -76,6 +79,12 @@ all:
 	@echo
 	@echo
 	@echo -------------------------------------------------------------------------------
+	@echo running symlink/no-overwrite failure mode
+	@echo
+	$(MAKE) safetyfail
+	@echo
+	@echo
+	@echo -------------------------------------------------------------------------------
 	@echo running argument-failure mode
 	@echo
 	$(MAKE) argfail
@@ -100,6 +109,9 @@ externaltrash: clean env create cull verify
 collision: clean env create_collision cull_collision verify_collision
 	$(MAKE) clean
 
+safetyfail: clean env create_safety cull_safety verify_safety
+	$(MAKE) clean
+
 argfail: clean env create argcheck
 	$(MAKE) clean
 
@@ -115,6 +127,9 @@ create_longpath:
 
 create_collision:
 	./create_testdata.sh $(DATA_ROOT) $(TRASH_ROOT) $(RETENTION_WINDOW) --with-trash-collision
+
+create_safety:
+	./create_testdata.sh $(DATA_ROOT) $(TRASH_ROOT) $(RETENTION_WINDOW) --with-safety-failures
 
 cull:
 	mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
@@ -140,6 +155,19 @@ cull_collision:
 		$(OPTS) >$(COLLISION_LOG) 2>&1; then \
 		echo '*** ERROR *** expected collision-mode cull to fail' >&2; \
 		cat $(COLLISION_LOG) >&2; \
+		exit 1; \
+	fi
+
+cull_safety:
+	@rm -f $(SAFETY_LOG)
+	@set -e; \
+	if LC_ALL=C mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
+		fscull --data-root $(DATA_ROOT) --trash-root $(TRASH_ROOT) \
+		--retention-window $(RETENTION_WINDOW) \
+		`find $(DATA_ROOT) -name exempt | xargs -n 1 echo --exempt-path` \
+		$(OPTS) >$(SAFETY_LOG) 2>&1; then \
+		echo '*** ERROR *** expected symlink/no-overwrite mode to fail' >&2; \
+		cat $(SAFETY_LOG) >&2; \
 		exit 1; \
 	fi
 
@@ -186,14 +214,47 @@ verify_collision:
 	test `find $(TRASH_ROOT) -name '*.deleteme' | wc -l` -eq $(NUM_DELETEME_COLLISION)
 	grep -qi 'not a directory' $(COLLISION_LOG)
 
+verify_safety:
+	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.keepme'   -print | wc -l` -eq $(NUM_KEEPME)
+	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.deleteme' -print | wc -l` -eq $(NUM_DELETEME_UNCULLED_SAFETY)
+	test ! -e $(DATA_ROOT)/exempt-sibling/prefix_bug.deleteme
+	test -e $(TRASH_ROOT)/exempt-sibling/prefix_bug.deleteme
+	test -L $(DATA_ROOT)/foo.symlink
+	test ! -e $(TRASH_ROOT)/foo.symlink
+	test -e $(DATA_ROOT)/leaf_collision_repro/leaf_collision.deleteme
+	grep -qx 'source' $(DATA_ROOT)/leaf_collision_repro/leaf_collision.deleteme
+	grep -qx 'trash' $(TRASH_ROOT)/leaf_collision_repro/leaf_collision.deleteme
+	test -e $(DATA_ROOT)/symlink_trap_repro/trapped.deleteme
+	test ! -e $(TRASH_ROOT)/symlink_trap_target/trapped.deleteme
+	test `find $(TRASH_ROOT) -name '*.keepme'   | wc -l` -eq 0
+	test `find $(TRASH_ROOT) -name '*.deleteme' | wc -l` -eq $(NUM_DELETEME_SAFETY)
+	grep -qi 'file exists' $(SAFETY_LOG)
+	grep -qi 'too many levels of symbolic links' $(SAFETY_LOG)
+
 argcheck:
 	@set -e; \
 	if fscull >/dev/null 2>&1; then \
 		echo '*** ERROR *** expected missing-arguments invocation to fail' >&2; \
 		exit 1; \
 	fi; \
+	if fscull --data-root $(DATA_ROOT) --retention-window 1 >/dev/null 2>&1; then \
+		echo '*** ERROR *** expected missing --trash-root to fail' >&2; \
+		exit 1; \
+	fi; \
+	if fscull --trash-root $(TRASH_ROOT) --retention-window 1 >/dev/null 2>&1; then \
+		echo '*** ERROR *** expected missing --data-root to fail' >&2; \
+		exit 1; \
+	fi; \
 	if fscull --data-root $(DATA_ROOT) --trash-root $(TRASH_ROOT) --retention-window nope >/dev/null 2>&1; then \
 		echo '*** ERROR *** expected invalid --retention-window to fail' >&2; \
+		exit 1; \
+	fi; \
+	if fscull --data-root $(DATA_ROOT)-missing --trash-root $(TRASH_ROOT) --retention-window 1 >/dev/null 2>&1; then \
+		echo '*** ERROR *** expected missing data root to fail' >&2; \
+		exit 1; \
+	fi; \
+	if fscull --data-root $(DATA_ROOT) --trash-root $(TRASH_ROOT)-missing --retention-window 1 >/dev/null 2>&1; then \
+		echo '*** ERROR *** expected missing trash root to fail' >&2; \
 		exit 1; \
 	fi; \
 	if fscull --data-root $(DATA_ROOT) --trash-root $(TRASH_ROOT) --retention-window 1 --exempt-path $(DATA_ROOT)/missing >/dev/null 2>&1; then \
@@ -207,12 +268,36 @@ argcheck:
 	if fscull --data-root $(DATA_ROOT) --trash-root $(DATA_ROOT)/bar.keepme --retention-window 1 >/dev/null 2>&1; then \
 		echo '*** ERROR *** expected non-directory trash root to fail' >&2; \
 		exit 1; \
-	fi
+	fi; \
+	DATA_DEV=$$(stat -c %d $(DATA_ROOT)); \
+	CROSSFS_ROOT=''; \
+	for CANDIDATE in /dev/shm /var/tmp /tmp; do \
+		if [ -d "$$CANDIDATE" ]; then \
+			CANDIDATE_DEV=$$(stat -c %d "$$CANDIDATE"); \
+			if [ "$$CANDIDATE_DEV" != "$$DATA_DEV" ]; then \
+				CROSSFS_ROOT="$$CANDIDATE/fscull_crossfs_trash.$$PPID"; \
+				break; \
+			fi; \
+		fi; \
+	done; \
+	if [ -z "$$CROSSFS_ROOT" ]; then \
+		echo '*** ERROR *** unable to find an alternate filesystem for testing' >&2; \
+		exit 1; \
+	fi; \
+	mkdir -p "$$CROSSFS_ROOT"; \
+	if fscull --data-root $(DATA_ROOT) --trash-root "$$CROSSFS_ROOT" --retention-window 1 >/dev/null 2>&1; then \
+		echo '*** ERROR *** expected cross-filesystem trash root to fail' >&2; \
+		rm -rf -- "$$CROSSFS_ROOT"; \
+		exit 1; \
+	fi; \
+	rm -rf -- "$$CROSSFS_ROOT"
 
 clean:
 	./remove_testdata.sh $(DATA_ROOT) $(TRASH_ROOT)
 	rm -f $(COLLISION_LOG)
+	rm -f $(SAFETY_LOG)
 
 clean_longpath:
 	./remove_testdata.sh $(LONGPATH_DATA_ROOT) $(LONGPATH_TRASH_ROOT)
 	rm -f $(COLLISION_LOG)
+	rm -f $(SAFETY_LOG)

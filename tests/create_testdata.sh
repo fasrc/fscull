@@ -11,6 +11,15 @@ if [ -z "$DATA_ROOT" -o -z "$TRASH_ROOT" -o -z "$RETENTION_WINDOW" ]; then
 	exit 1
 fi
 
+case "$FIXTURE_OPTION" in
+	""|--with-long-path|--with-trash-collision|--with-safety-failures)
+		;;
+	*)
+		echo "*** ERROR *** unknown FIXTURE_OPTION [$FIXTURE_OPTION]" >&2
+		exit 1
+		;;
+esac
+
 if [ -d "$DATA_ROOT" ]; then
 	echo "*** ERROR *** \$DATA_ROOT directory [$DATA_ROOT] already exists; run \`make clean\` first" >&2
 	exit 1
@@ -130,9 +139,27 @@ if [ "$FIXTURE_OPTION" = "--with-trash-collision" ]; then
 	touch --date="$D_DELETEME" "$COLLISION_REPRO_DIR"/collision_bug.deleteme
 fi
 
+if [ "$FIXTURE_OPTION" = "--with-safety-failures" ]; then
+	LEAF_COLLISION_REPRO_DIR="$DATA_ROOT"/leaf_collision_repro
+	SYMLINK_TRAP_REPRO_DIR="$DATA_ROOT"/symlink_trap_repro
+	mkdir -p "$LEAF_COLLISION_REPRO_DIR" "$SYMLINK_TRAP_REPRO_DIR"
+	printf 'source\n' > "$LEAF_COLLISION_REPRO_DIR"/leaf_collision.deleteme
+	touch --date="$D_DELETEME" "$LEAF_COLLISION_REPRO_DIR"/leaf_collision.deleteme
+	printf 'source\n' > "$SYMLINK_TRAP_REPRO_DIR"/trapped.deleteme
+	touch --date="$D_DELETEME" "$SYMLINK_TRAP_REPRO_DIR"/trapped.deleteme
+	chmod 600 "$SYMLINK_TRAP_REPRO_DIR"/trapped.deleteme
+fi
+
 
 mkdir "$TRASH_ROOT"
 
 if [ "$FIXTURE_OPTION" = "--with-trash-collision" ]; then
 	touch "$TRASH_ROOT"/trash_collision_repro
+fi
+
+if [ "$FIXTURE_OPTION" = "--with-safety-failures" ]; then
+	mkdir -p "$TRASH_ROOT"/leaf_collision_repro "$TRASH_ROOT"/symlink_trap_target
+	printf 'trash\n' > "$TRASH_ROOT"/leaf_collision_repro/leaf_collision.deleteme
+	touch --date="$D_DELETEME" "$TRASH_ROOT"/leaf_collision_repro/leaf_collision.deleteme
+	ln -s symlink_trap_target "$TRASH_ROOT"/symlink_trap_repro
 fi

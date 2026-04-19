@@ -21,6 +21,8 @@ fscull \- distributed filesystem data retention policy enforcement
 fscull walks a filesystem and moves files older than a specified age to a trash bin.
 It's a distributed application using MPI (really just a wrapper around rename(2), which is then used as the map in fsmr mapreduce).
 It's meant to be deployed on HPC storage such as Lustre, where it can use 100s of processes to scan and move 100s of millions of files on a scale of hours.
+The trash root must live on the same filesystem as the data root.
+Symlink path components are rejected while opening source and trash directories, so files are never moved through symlinked directory hops.
 
 
 .SH OPTIONS
@@ -32,6 +34,7 @@ The top-level directory to recursively cull.
 .TP
 .BR \-t ", " \-\-trash\-root " PATH"
 The trash bin directory, where purged files go.
+It must already exist and be on the same filesystem as the data root.
 
 .TP
 .BR \-w ", " \-\-retention\-window " SECONDS"

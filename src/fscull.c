@@ -70,6 +70,22 @@ static int exempt_paths_l = 0;
 
 //--- helpers
 
+static char path_is_same_or_descendant(const char *path, const char *root) {
+	size_t root_len;
+
+	if (path == NULL || root == NULL) {
+		return 0;
+	}
+
+	root_len = strlen(root);
+	if (root_len == 1 && root[0] == '/') {
+		return path[0] == '/';
+	}
+
+	return strncmp(path, root, root_len) == 0 &&
+	       (path[root_len] == '\0' || path[root_len] == '/');
+}
+
 static int check_directory_fd(int fd, const char *path) {
 	struct stat st;
 
@@ -92,7 +108,7 @@ static int check_directory_fd(int fd, const char *path) {
 static int open_directory(const char *path) {
 	int fd;
 
-	fd = open(path, O_RDONLY);
+	fd = open(path, O_RDONLY | O_NOFOLLOW);
 	if (fd < 0) {
 		perror(path);
 		return -1;
@@ -104,13 +120,42 @@ static int open_directory(const char *path) {
 static int open_directory_at(int dirfd, const char *path) {
 	int fd;
 
-	fd = openat(dirfd, path, O_RDONLY);
+	fd = openat(dirfd, path, O_RDONLY | O_NOFOLLOW);
 	if (fd < 0) {
 		perror(path);
 		return -1;
 	}
 
 	return check_directory_fd(fd, path);
+}
+
+static int init_root_directory(const char *input_path, char **resolved_path, int *resolved_len, int *dirfd_out, struct stat *st_out) {
+	char *resolved;
+	int fd;
+
+	resolved = realpath(input_path, NULL);
+	if (resolved == NULL) {
+		perror(input_path);
+		return -1;
+	}
+
+	fd = open_directory(input_path);
+	if (fd < 0) {
+		free(resolved);
+		return -1;
+	}
+
+	if (fstat(fd, st_out) != 0) {
+		perror(input_path);
+		close(fd);
+		free(resolved);
+		return -1;
+	}
+
+	*resolved_path = resolved;
+	*resolved_len = strlen(resolved);
+	*dirfd_out = fd;
+	return 0;
 }
 
 static int open_dir_components(int root_fd, const char *relative_path, int create, mode_t mode) {
@@ -185,9 +230,7 @@ static char exempt(const struct stat *sb, const char *fpath) {
 
 	int i = 0;
 	for (i==0; i<exempt_paths_l; i++) {
-		int l = strlen(exempt_paths[i]);
-		if (strncmp(fpath, exempt_paths[i], l) == 0 &&
-		    (fpath[l] == '\0' || fpath[l] == '/')) {
+		if (path_is_same_or_descendant(fpath, exempt_paths[i])) {
 			verbosity>=3 && fprintf(stdout, "exempt file: %s\n", fpath);
 			return 1;
 		}
@@ -238,7 +281,7 @@ static int cull(const char *fpath) {
 
 	//--- compute the destination path in trash (tpath) -- substitute leading data_path with trash_path
 
-	if (fpath_l < (size_t)data_root_l || strncmp(fpath, data_root, data_root_l) != 0) {
+	if (!path_is_same_or_descendant(fpath, data_root)) {
 		errno = EINVAL;
 		perror(fpath);
 		return -1;
@@ -300,6 +343,18 @@ static int cull(const char *fpath) {
 	//--- move the file
 
 	if (!pretend) {
+		struct stat st;
+
+		if (fstatat(dst_parent_fd, leafname, &st, AT_SYMLINK_NOFOLLOW) == 0) {
+			errno = EEXIST;
+			perror(fpath);
+			goto cleanup;
+		}
+		if (errno != ENOENT) {
+			perror(fpath);
+			goto cleanup;
+		}
+
 		if (renameat(src_parent_fd, leafname, dst_parent_fd, leafname)) {
 			perror(fpath);
 			goto cleanup;
@@ -389,8 +444,16 @@ static void reduce(char *key, int keybytes, char *multivalue, int nvalues, int *
 
 int main(int argc, char **argv) {
 	//--- option and argument parsing
+	const char *data_root_arg = NULL;
+	const char *trash_root_arg = NULL;
+	struct stat data_root_st;
+	struct stat trash_root_st;
 
 	exempt_paths = (char **)malloc(MAX_EXEMPT_PATHS * sizeof(char *));
+	if (exempt_paths == NULL) {
+		perror("malloc");
+		exit(EXIT_FAILURE);
+	}
 
 	while (1) {
 		static struct option longopts[] = {
@@ -415,24 +478,10 @@ int main(int argc, char **argv) {
 		if (c == -1) break;
 		switch (c) {
 			case 'd':
-				data_root = optarg;
-				if ( access(data_root, R_OK) ) {
-					fprintf(stderr, "*** ERROR *** unable to access data root: %s: errno %d: ", data_root, errno);
-					perror(NULL);
-					exit(EXIT_FAILURE);
-				}
-				data_root = realpath(data_root, NULL);
-				data_root_l = strlen(data_root);
+				data_root_arg = optarg;
 				break;
 			case 't':
-				trash_root = optarg;
-				if ( access(trash_root, X_OK) ) {
-					fprintf(stderr, "*** ERROR *** unable to access trash root: %s: errno %d: ", trash_root, errno);
-					perror(NULL);
-					exit(EXIT_FAILURE);
-				}
-				trash_root = realpath(trash_root, NULL);
-				trash_root_l = strlen(trash_root);
+				trash_root_arg = optarg;
 				break;
 			case 'w':
 				errno = 0;
@@ -448,17 +497,21 @@ int main(int argc, char **argv) {
 				}
 				break;
 			case 'e':
+				{
+					char *resolved_exempt_path;
+
 				if ( exempt_paths_l >= MAX_EXEMPT_PATHS ) {
 					fprintf(stderr, "*** ERROR *** hit MAX_EXEMPT_PATHS\n");
 					exit(EXIT_FAILURE);
 				} else {
-					if ( access(optarg, F_OK) ) {
-						fprintf(stderr, "*** ERROR *** exempt paths must currently exist: %s: errno %d: ", optarg, errno);
-						perror(NULL);
+					resolved_exempt_path = realpath(optarg, NULL);
+					if (resolved_exempt_path == NULL) {
+						perror(optarg);
 						exit(EXIT_FAILURE);
 					}
-					exempt_paths[exempt_paths_l] = realpath(optarg, NULL);
+					exempt_paths[exempt_paths_l] = resolved_exempt_path;
 					exempt_paths_l++;
+				}
 				}
 				break;
 
@@ -482,6 +535,28 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	//check that required options have been given
+	if ( data_root_arg == NULL || trash_root_arg == NULL || (retention_window <=0 || retention_window == INT_MAX )) {
+		fprintf(stderr, "usage: %s --data-root DATA_ROOT --trash-root TRASH_ROOT --retention-window SECONDS...\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+
+	if (init_root_directory(data_root_arg, &data_root, &data_root_l, &data_root_fd, &data_root_st) != 0) {
+		exit(EXIT_FAILURE);
+	}
+
+	if (init_root_directory(trash_root_arg, &trash_root, &trash_root_l, &trash_root_fd, &trash_root_st) != 0) {
+		close(data_root_fd);
+		exit(EXIT_FAILURE);
+	}
+
+	if (data_root_st.st_dev != trash_root_st.st_dev) {
+		fprintf(stderr, "*** ERROR *** data-root and trash-root must be on the same filesystem\n");
+		close(data_root_fd);
+		close(trash_root_fd);
+		exit(EXIT_FAILURE);
+	}
+
 	//reset argc/argv, forgetting about options above
 	argv[optind-1] = argv[0];
 	argv += (optind - 1);
@@ -492,28 +567,11 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "*** ERROR *** hit MAX_EXEMPT_PATHS\n");
 		exit(EXIT_FAILURE);
 	} else {
-		if ( strncmp(trash_root, data_root, data_root_l) == 0 ) {
+		if ( path_is_same_or_descendant(trash_root, data_root) ) {
 			verbosity>=3 && fprintf(stdout, "trash_root is a subdirectory of data_root, exempting\n");
 			exempt_paths[exempt_paths_l] = trash_root;
 			exempt_paths_l++;
 		}
-	}
-
-	//check that required options have been given
-	if ( data_root == NULL || trash_root == NULL || (retention_window <=0 || retention_window == INT_MAX )) {
-		fprintf(stderr, "usage: %s --data-root DATA_ROOT --trash-root TRASH_ROOT --retention-window SECONDS...\n", argv[0]);
-		exit(EXIT_FAILURE);
-	}
-
-	data_root_fd = open_directory(data_root);
-	if (data_root_fd < 0) {
-		exit(EXIT_FAILURE);
-	}
-
-	trash_root_fd = open_directory(trash_root);
-	if (trash_root_fd < 0) {
-		close(data_root_fd);
-		exit(EXIT_FAILURE);
 	}
 
 
@@ -522,8 +580,6 @@ int main(int argc, char **argv) {
 	//repeat the basic parameters
 	if (verbosity>=0) {
 		fprintf(stdout, "running with:\n");
-		fprintf(stdout, "    --data-root: %s\n", data_root);
-		fprintf(stdout, "    --data-root: %s\n", data_root);
 		fprintf(stdout, "    --data-root: %s\n", data_root);
 		fprintf(stdout, "    --trash-root: %s\n", trash_root);
 		int i = 0;
