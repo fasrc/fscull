@@ -28,6 +28,8 @@ SYMLINK_REAL_DATA_ROOT = symlink_root_real_data
 SYMLINK_REAL_TRASH_ROOT = symlink_root_real_trash
 SYMLINK_DATA_ROOT = symlink_root_data
 SYMLINK_TRASH_ROOT = symlink_root_trash
+NORMAL_LOG = normal_cull.log
+SYMLINKROOTS_LOG = symlinkroots_cull.log
 COLLISION_LOG = collision_cull.log
 SAFETY_LOG = safety_fail.log
 
@@ -150,11 +152,18 @@ create_symlinkroots:
 	ln -s $(SYMLINK_REAL_TRASH_ROOT) $(SYMLINK_TRASH_ROOT)
 
 cull:
-	mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
+	@rm -f $(NORMAL_LOG)
+	@set -e; \
+	if LC_ALL=C mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
 		fscull --data-root $(DATA_ROOT) --trash-root $(TRASH_ROOT) \
 		--retention-window $(RETENTION_WINDOW) \
 		`find $(DATA_ROOT) -name exempt | xargs -n 1 echo --exempt-path` \
-		$(OPTS)
+		$(OPTS) >$(NORMAL_LOG) 2>&1; then \
+		cat $(NORMAL_LOG); \
+	else \
+		cat $(NORMAL_LOG) >&2; \
+		exit 1; \
+	fi
 
 cull_longpath:
 	mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
@@ -190,11 +199,18 @@ cull_safety:
 	fi
 
 cull_symlinkroots:
-	mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
+	@rm -f $(SYMLINKROOTS_LOG)
+	@set -e; \
+	if LC_ALL=C mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
 		fscull --data-root $(SYMLINK_DATA_ROOT) --trash-root $(SYMLINK_TRASH_ROOT) \
 		--retention-window $(RETENTION_WINDOW) \
 		`find $(SYMLINK_REAL_DATA_ROOT) -name exempt | xargs -n 1 echo --exempt-path` \
-		$(OPTS)
+		$(OPTS) >$(SYMLINKROOTS_LOG) 2>&1; then \
+		cat $(SYMLINKROOTS_LOG); \
+	else \
+		cat $(SYMLINKROOTS_LOG) >&2; \
+		exit 1; \
+	fi
 
 verify:
 	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.keepme'   -print | wc -l` -eq $(NUM_KEEPME)
@@ -205,6 +221,7 @@ verify:
 	test ! -e $(TRASH_ROOT)/foo.symlink
 	test `find $(TRASH_ROOT) -name '*.keepme'   | wc -l` -eq 0
 	test `find $(TRASH_ROOT) -name '*.deleteme' | wc -l` -eq $(NUM_DELETEME)
+	! grep -q '/_trash/' $(NORMAL_LOG)
 
 verify_pretend:
 	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.keepme'   -print | wc -l` -eq $(NUM_KEEPME)
@@ -267,6 +284,7 @@ verify_symlinkroots:
 	test ! -e $(SYMLINK_REAL_TRASH_ROOT)/foo.symlink
 	test `find $(SYMLINK_REAL_TRASH_ROOT) -name '*.keepme'   | wc -l` -eq 0
 	test `find $(SYMLINK_REAL_TRASH_ROOT) -name '*.deleteme' | wc -l` -eq $(NUM_DELETEME)
+	! grep -q '/symlink_root_real_trash/' $(SYMLINKROOTS_LOG)
 
 argcheck:
 	@set -e; \
@@ -353,10 +371,14 @@ clean:
 	./remove_testdata.sh $(SYMLINK_REAL_DATA_ROOT) $(SYMLINK_REAL_TRASH_ROOT)
 	rm -f $(SYMLINK_DATA_ROOT)
 	rm -f $(SYMLINK_TRASH_ROOT)
+	rm -f $(NORMAL_LOG)
+	rm -f $(SYMLINKROOTS_LOG)
 	rm -f $(COLLISION_LOG)
 	rm -f $(SAFETY_LOG)
 
 clean_longpath:
 	./remove_testdata.sh $(LONGPATH_DATA_ROOT) $(LONGPATH_TRASH_ROOT)
+	rm -f $(NORMAL_LOG)
+	rm -f $(SYMLINKROOTS_LOG)
 	rm -f $(COLLISION_LOG)
 	rm -f $(SAFETY_LOG)

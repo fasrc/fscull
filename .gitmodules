@@ -4,6 +4,7 @@
 [submodule "vendor/libdftw"]
 	path = vendor/libdftw
 	url = https://github.com/fasrc/libdftw.git
+        branch = skip-subtree
 [submodule "vendor/libcircle"]
 	path = vendor/libcircle
 	url = https://github.com/fasrc/libcircle.git

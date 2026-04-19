@@ -249,27 +249,35 @@ cleanup:
 
 //--- main funcationality
 
+static char path_is_exempt(const char *fpath) {
+	int i = 0;
+
+	for (i = 0; i < exempt_paths_l; i++) {
+		if (path_is_same_or_descendant(fpath, exempt_paths[i])) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 static char exempt(const struct stat *sb, const char *fpath) {
 	/*
-	 * test whether or not the file is exempt
+	 * test whether or not the path is exempt
 	 *
 	 * returns 0 if not, >0 if so, and <0 if error
 	 *
 	 * assumes path sb and fpath are not NULL
 	 */
 
-	int i = 0;
 	(void)sb;
-	for (i = 0; i < exempt_paths_l; i++) {
-		if (path_is_same_or_descendant(fpath, exempt_paths[i])) {
-			if (verbosity >= 3) {
-				fprintf(stdout, "exempt file: %s\n", fpath);
-			}
-			return 1;
+	if (path_is_exempt(fpath)) {
+		if (verbosity >= 3) {
+			fprintf(stdout, "exempt path: %s\n", fpath);
 		}
+		return 1;
 	}
 	if (verbosity >= 3) {
-		fprintf(stdout, "non-exempt file: %s\n", fpath);
+		fprintf(stdout, "non-exempt path: %s\n", fpath);
 	}
 	return 0;
 }
@@ -415,17 +423,13 @@ static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 	switch (tflag) {
 		case FTW_D:
 			//fpath is a directory
-			//typically don't do anything with it
-
-			////FIXME skipping a directory by returning non-zero does not work
-			////it would be much better to patch dftw to not even enter --exempt-path directories
-			////as-is, this still processes every single file, comparing to the exempt path just to end up ignoring it
-			//if ( strcmp(fpath, exempt_dir) == 0 ) {
-			//	verbosity>=3 && fprintf(stdout, "exempt path: %s\n", fpath);
-			//	return -1;
-			//} else {
-				return 0;
-			//}
+			if (path_is_exempt(fpath)) {
+				if (verbosity >= 3) {
+					fprintf(stdout, "pruning exempt directory: %s\n", fpath);
+				}
+				return DFTW_SKIP_SUBTREE;
+			}
+			return DFTW_CONTINUE;
 		default: {
 			//(FTW_F)
 			//typically want to ignore symlinks
