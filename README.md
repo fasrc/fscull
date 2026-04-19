@@ -72,3 +72,12 @@ salloc -p test -t 10 -n 3 --mem=4g
 module load gcc/13.2.0-fasrc01 openmpi/5.0.2-fasrc01 #(at FASRC)
 make test
 ```
+
+## dev container development
+
+To develop in a [dev container](https://containers.dev/) such as a local VS Code environment with the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension or a GitHub Codespace, open the repository in the container and run:
+
+```
+make # build 
+make test # run tests
+```
