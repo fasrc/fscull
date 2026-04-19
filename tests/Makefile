@@ -153,17 +153,11 @@ create_symlinkroots:
 
 cull:
 	@rm -f $(NORMAL_LOG)
-	@set -e; \
-	if LC_ALL=C mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
+	@bash -o pipefail -c 'LC_ALL=C mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
 		fscull --data-root $(DATA_ROOT) --trash-root $(TRASH_ROOT) \
 		--retention-window $(RETENTION_WINDOW) \
 		`find $(DATA_ROOT) -name exempt | xargs -n 1 echo --exempt-path` \
-		$(OPTS) >$(NORMAL_LOG) 2>&1; then \
-		cat $(NORMAL_LOG); \
-	else \
-		cat $(NORMAL_LOG) >&2; \
-		exit 1; \
-	fi
+		$(OPTS) 2>&1 | tee "$(NORMAL_LOG)"'
 
 cull_longpath:
 	mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
@@ -174,43 +168,33 @@ cull_longpath:
 
 cull_collision:
 	@rm -f $(COLLISION_LOG)
-	@set -e; \
-	if LC_ALL=C mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
+	@if bash -o pipefail -c 'LC_ALL=C mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
 		fscull --data-root $(DATA_ROOT) --trash-root $(TRASH_ROOT) \
 		--retention-window $(RETENTION_WINDOW) \
 		`find $(DATA_ROOT) -name exempt | xargs -n 1 echo --exempt-path` \
-		$(OPTS) >$(COLLISION_LOG) 2>&1; then \
+		$(OPTS) 2>&1 | tee "$(COLLISION_LOG)"'; then \
 		echo '*** ERROR *** expected collision-mode cull to fail' >&2; \
-		cat $(COLLISION_LOG) >&2; \
 		exit 1; \
 	fi
 
 cull_safety:
 	@rm -f $(SAFETY_LOG)
-	@set -e; \
-	if LC_ALL=C mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
+	@if bash -o pipefail -c 'LC_ALL=C mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
 		fscull --data-root $(DATA_ROOT) --trash-root $(TRASH_ROOT) \
 		--retention-window $(RETENTION_WINDOW) \
 		`find $(DATA_ROOT) -name exempt | xargs -n 1 echo --exempt-path` \
-		$(OPTS) >$(SAFETY_LOG) 2>&1; then \
+		$(OPTS) 2>&1 | tee "$(SAFETY_LOG)"'; then \
 		echo '*** ERROR *** expected symlink/no-overwrite mode to fail' >&2; \
-		cat $(SAFETY_LOG) >&2; \
 		exit 1; \
 	fi
 
 cull_symlinkroots:
 	@rm -f $(SYMLINKROOTS_LOG)
-	@set -e; \
-	if LC_ALL=C mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
+	@bash -o pipefail -c 'LC_ALL=C mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
 		fscull --data-root $(SYMLINK_DATA_ROOT) --trash-root $(SYMLINK_TRASH_ROOT) \
 		--retention-window $(RETENTION_WINDOW) \
 		`find $(SYMLINK_REAL_DATA_ROOT) -name exempt | xargs -n 1 echo --exempt-path` \
-		$(OPTS) >$(SYMLINKROOTS_LOG) 2>&1; then \
-		cat $(SYMLINKROOTS_LOG); \
-	else \
-		cat $(SYMLINKROOTS_LOG) >&2; \
-		exit 1; \
-	fi
+		$(OPTS) 2>&1 | tee "$(SYMLINKROOTS_LOG)"'
 
 verify:
 	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.keepme'   -print | wc -l` -eq $(NUM_KEEPME)
