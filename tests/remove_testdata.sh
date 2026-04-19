@@ -13,5 +13,5 @@ fi
 #---
 
 
-rm -fr ./"$DATA_ROOT" 
-rm -fr ./"$TRASH_ROOT"
+rm -fr -- "$DATA_ROOT"
+rm -fr -- "$TRASH_ROOT"

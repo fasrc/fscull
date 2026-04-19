@@ -1,3 +1,5 @@
+#define _XOPEN_SOURCE 700
+
 /*
 
 Copyright (c) 2014, Harvard FAS Research Computing
@@ -12,9 +14,9 @@ All rights reserved.
 #include <stdio.h>
 #include <unistd.h>
 #include <time.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <libgen.h>
 #include <limits.h>
 #include <getopt.h>
 #include <errno.h>
@@ -44,6 +46,8 @@ static int data_root_l = 0;  //its strlen (not including the null)
 //absolute path to the trash directory
 static char *trash_root = NULL;
 static int trash_root_l = 0;  //its strlen (not including the null)
+static int data_root_fd = -1;
+static int trash_root_fd = -1;
 
 //the time against which ages are calculated (set at startup, and doesn't change)
 static time_t t_now;
@@ -66,91 +70,105 @@ static int exempt_paths_l = 0;
 
 //--- helpers
 
-int mkdir_p(char *path, mode_t mode) {
-	/*
-	 * make all components of the given path, like `mkdir -p`
-	 * this is implemented recursively
-	 *
-	 * returns 0 for success, <0 for failure (and writes an error to stderr)
-	 *
-	 * assumes path is not NULL
-	 */
-
-	char path_copy[PATH_MAX];
-	char parent_copy[PATH_MAX];
-	int n;
-	size_t len;
+static int check_directory_fd(int fd, const char *path) {
 	struct stat st;
 
-	if (path == NULL || path[0] == '\0') {
-		errno = EINVAL;
-		perror("mkdir_p");
+	if (fstat(fd, &st) != 0) {
+		perror(path);
+		close(fd);
 		return -1;
 	}
 
-	n = snprintf(path_copy, sizeof(path_copy), "%s", path);
-	if (n < 0 || n >= PATH_MAX) {
-		errno = ENAMETOOLONG;
+	if (!S_ISDIR(st.st_mode)) {
+		errno = ENOTDIR;
+		perror(path);
+		close(fd);
+		return -1;
+	}
+
+	return fd;
+}
+
+static int open_directory(const char *path) {
+	int fd;
+
+	fd = open(path, O_RDONLY);
+	if (fd < 0) {
 		perror(path);
 		return -1;
 	}
-	len = (size_t)n;
 
-	//normalize a trailing slash (except for '/')
-	while (len > 1 && path_copy[len - 1] == '/') {
-		path_copy[len - 1] = '\0';
-		len--;
-	}
+	return check_directory_fd(fd, path);
+}
 
-	if (strcmp(path_copy, "/") == 0 || strcmp(path_copy, ".") == 0) {
-		return 0;
-	}
+static int open_directory_at(int dirfd, const char *path) {
+	int fd;
 
-	if (mkdir(path_copy, mode) == 0) {
-		verbosity>=3 && fprintf(stdout, "created directory: %s\n", path_copy);
-		return 0;
-	}
-
-	if (errno == EEXIST) {
-		if (stat(path_copy, &st) == 0 && S_ISDIR(st.st_mode)) {
-			return 0;
-		}
-		errno = ENOTDIR;
-		perror(path_copy);
+	fd = openat(dirfd, path, O_RDONLY);
+	if (fd < 0) {
+		perror(path);
 		return -1;
 	}
 
-	if (errno != ENOENT) {
-		perror(path_copy);
+	return check_directory_fd(fd, path);
+}
+
+static int open_dir_components(int root_fd, const char *relative_path, int create, mode_t mode) {
+	char *path_copy = NULL;
+	char *component = NULL;
+	char *saveptr = NULL;
+	int current_fd = -1;
+	int next_fd = -1;
+
+	current_fd = dup(root_fd);
+	if (current_fd < 0) {
+		perror("dup");
 		return -1;
 	}
 
-	n = snprintf(parent_copy, sizeof(parent_copy), "%s", path_copy);
-	if (n < 0 || n >= PATH_MAX) {
-		errno = ENAMETOOLONG;
-		perror(path_copy);
+	if (relative_path == NULL || relative_path[0] == '\0') {
+		return current_fd;
+	}
+
+	path_copy = strdup(relative_path);
+	if (path_copy == NULL) {
+		perror("strdup");
+		close(current_fd);
 		return -1;
 	}
 
-	if (mkdir_p(dirname(parent_copy), mode)) {
-		return -1;
-	}
-
-	if (mkdir(path_copy, mode) != 0) {
-		if (errno == EEXIST) {
-			if (stat(path_copy, &st) == 0 && S_ISDIR(st.st_mode)) {
-				return 0;
+	component = strtok_r(path_copy, "/", &saveptr);
+	while (component != NULL) {
+		if (create) {
+			if (mkdirat(current_fd, component, mode) != 0 && errno != EEXIST) {
+				perror(component);
+				goto cleanup;
 			}
-			errno = ENOTDIR;
-			perror(path_copy);
-			return -1;
 		}
-		perror(path_copy);
-		return -1;
+
+		next_fd = open_directory_at(current_fd, component);
+		if (next_fd < 0) {
+			goto cleanup;
+		}
+
+		close(current_fd);
+		current_fd = next_fd;
+		next_fd = -1;
+		component = strtok_r(NULL, "/", &saveptr);
 	}
 
-	verbosity>=3 && fprintf(stdout, "created directory: %s\n", path_copy);
-	return 0;
+	free(path_copy);
+	return current_fd;
+
+cleanup:
+	if (next_fd >= 0) {
+		close(next_fd);
+	}
+	if (current_fd >= 0) {
+		close(current_fd);
+	}
+	free(path_copy);
+	return -1;
 }
 
 
@@ -168,7 +186,8 @@ static char exempt(const struct stat *sb, const char *fpath) {
 	int i = 0;
 	for (i==0; i<exempt_paths_l; i++) {
 		int l = strlen(exempt_paths[i]);
-		if ( strncmp(fpath, exempt_paths[i], l) == 0 ) {
+		if (strncmp(fpath, exempt_paths[i], l) == 0 &&
+		    (fpath[l] == '\0' || fpath[l] == '/')) {
 			verbosity>=3 && fprintf(stdout, "exempt file: %s\n", fpath);
 			return 1;
 		}
@@ -204,71 +223,102 @@ static int cull(const char *fpath) {
 	 * assumes fpath is not NULL
 	 */
 
-	//the absolute path of the file's new location in trash
-	static char tpath[PATH_MAX];
-	static int tpath_l;
+	char *parent_rel = NULL;
+	const char *relative_path;
+	const char *leafname;
+	const char *last_sep;
+	size_t fpath_l;
+	size_t parent_rel_l;
+	int src_parent_fd = -1;
+	int dst_parent_fd = -1;
+	int rc = -1;
 
-	//length of the given path (to save recomputing it many times)
-	static int fpath_l;
 	fpath_l = strlen(fpath);
-
-	//a temporary buffer
-	static char tpath_copy[PATH_MAX];
 
 
 	//--- compute the destination path in trash (tpath) -- substitute leading data_path with trash_path
 
-	//check that tpath buffer is large enough
-	if ( sizeof(tpath) < (strlen(trash_root) + strlen(fpath) - strlen(data_root) + 1) ) {
-		fprintf(stderr, "*** ERROR *** internal error: attempt to create trash path > PATH_MAX for: %s\n", fpath);
+	if (fpath_l < (size_t)data_root_l || strncmp(fpath, data_root, data_root_l) != 0) {
+		errno = EINVAL;
+		perror(fpath);
+		return -1;
+	}
+	if (data_root_fd < 0 || trash_root_fd < 0) {
+		errno = EBADF;
+		perror("cull");
 		return -1;
 	}
 
-	//start with the trash_root
-	memcpy(
-		tpath,
-		trash_root,
-		trash_root_l
-	);
-	//add the stuff in fpath after the data_root
-	memcpy(
-		tpath + trash_root_l,
-		fpath + data_root_l,
-		fpath_l - data_root_l + 1
-	);
+	relative_path = fpath + data_root_l;
+	while (*relative_path == '/') {
+		relative_path++;
+	}
+	if (*relative_path == '\0') {
+		errno = EINVAL;
+		perror(fpath);
+		return -1;
+	}
 
-	tpath_l = strlen(tpath);
+	last_sep = strrchr(relative_path, '/');
+	if (last_sep == NULL) {
+		leafname = relative_path;
+		parent_rel = strdup("");
+		if (parent_rel == NULL) {
+			perror("strdup");
+			return -1;
+		}
+	} else {
+		leafname = last_sep + 1;
+		parent_rel_l = (size_t)(last_sep - relative_path);
+		parent_rel = (char *)malloc(parent_rel_l + 1);
+		if (parent_rel == NULL) {
+			perror("malloc");
+			return -1;
+		}
+		memcpy(parent_rel, relative_path, parent_rel_l);
+		parent_rel[parent_rel_l] = '\0';
+	}
 
 
 	//--- make the directory for it in the trash
 
-	//dirname modified its arg; make a copy
-	memcpy(tpath_copy, tpath, tpath_l+1);
 	if (!pretend) {
-		if (mkdir_p(dirname(tpath_copy), 0700)) {
-			fprintf(stderr, "*** ERROR *** unable to make directory in trash: %s: errno %d: ", tpath_copy, errno);
-			perror(NULL);
-			return -1;
+		src_parent_fd = open_dir_components(data_root_fd, parent_rel, 0, 0);
+		if (src_parent_fd < 0) {
+			goto cleanup;
+		}
+
+		dst_parent_fd = open_dir_components(trash_root_fd, parent_rel, 1, 0700);
+		if (dst_parent_fd < 0) {
+			goto cleanup;
 		}
 	} else {
-		verbosity>=3 && fprintf(stdout, "pretend mode: skipping directory creation: %s", tpath_copy);
+		verbosity>=3 && fprintf(stdout, "pretend mode: skipping directory creation under: %s/%s\n", trash_root, parent_rel);
 	}
 
 
 	//--- move the file
 
 	if (!pretend) {
-		if (rename(fpath, tpath)) {
-			fprintf(stderr, "*** ERROR *** unable to move file to trash: %s -> %s: errno %d: ", fpath, tpath, errno);
-			perror(NULL);
-			return -1;
+		if (renameat(src_parent_fd, leafname, dst_parent_fd, leafname)) {
+			perror(fpath);
+			goto cleanup;
 		}
 	} else {
-		verbosity>=3 && fprintf(stdout, "pretend mode: skipping file move: %s -> %s", fpath, tpath);
+		verbosity>=3 && fprintf(stdout, "pretend mode: skipping file move: %s -> %s/%s\n", fpath, trash_root, relative_path);
 	}
 
+	rc = 0;
 
-	return 0;
+cleanup:
+	if (src_parent_fd >= 0) {
+		close(src_parent_fd);
+	}
+	if (dst_parent_fd >= 0) {
+		close(dst_parent_fd);
+	}
+	free(parent_rel);
+	return rc;
 }
 
 
@@ -277,8 +327,6 @@ static int cull(const char *fpath) {
 //the map function
 //see ftw(3) man page (dftw is basically identical)
 static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
-	off_t size;
-	uid_t uid;
 	int rc = 0;
 
 	switch (tflag) {
@@ -309,15 +357,10 @@ static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 			//(FTW_F)
 			//typically want to ignore symlinks
 			if (!S_ISLNK(sb->st_mode)) {
-				size = sb->st_size;
-				uid  = sb->st_uid;
-
 				rc = cullable(sb, fpath);
 				if (rc > 0) {
 					if (cull(fpath)) {
-						fprintf(stderr, "*** ERROR *** failed to cull file: %s\n", fpath);
 						exit_status = EXIT_FAILURE;
-						return -1;
 					} else {
 						verbosity>=1 && fprintf(stdout, "culled file: %s\n", fpath);
 					}
@@ -365,6 +408,8 @@ int main(int argc, char **argv) {
 
 		int c = 0;
 		int *indexptr = 0;
+		char *endptr = NULL;
+		long long parsed_retention_window;
 
 		c = getopt_long(argc, argv, "d:t:w:e:pvh", longopts, indexptr);
 		if (c == -1) break;
@@ -390,7 +435,14 @@ int main(int argc, char **argv) {
 				trash_root_l = strlen(trash_root);
 				break;
 			case 'w':
-				if ( sscanf(optarg, "%d", &retention_window) <=0 ) {
+				errno = 0;
+				parsed_retention_window = strtoll(optarg, &endptr, 10);
+				if (errno != 0 || endptr == optarg || *endptr != '\0') {
+					fprintf(stderr, "*** ERROR *** invalid --retention-window: %s\n", optarg);
+					exit(EXIT_FAILURE);
+				}
+				retention_window = (time_t)parsed_retention_window;
+				if ((long long)retention_window != parsed_retention_window) {
 					fprintf(stderr, "*** ERROR *** invalid --retention-window: %s\n", optarg);
 					exit(EXIT_FAILURE);
 				}
@@ -453,6 +505,17 @@ int main(int argc, char **argv) {
 		exit(EXIT_FAILURE);
 	}
 
+	data_root_fd = open_directory(data_root);
+	if (data_root_fd < 0) {
+		exit(EXIT_FAILURE);
+	}
+
+	trash_root_fd = open_directory(trash_root);
+	if (trash_root_fd < 0) {
+		close(data_root_fd);
+		exit(EXIT_FAILURE);
+	}
+
 
 	//---
 
@@ -467,7 +530,7 @@ int main(int argc, char **argv) {
 		for (i==0; i<exempt_paths_l; i++) {
 			fprintf(stdout, "    an --exempt-path: %s\n", exempt_paths[i]);
 		}
-		fprintf(stdout, "    --retention-window: %d\n", retention_window);
+		fprintf(stdout, "    --retention-window: %lld\n", (long long)retention_window);
 		fprintf(stdout, "    verbosity: %d\n", verbosity);
 	}
 
@@ -482,8 +545,13 @@ int main(int argc, char **argv) {
 
 	if (fsmr(data_root, map, reduce)) {
 		fprintf(stderr, "*** ERROR *** %s failed\n", argv[0]);
+		close(data_root_fd);
+		close(trash_root_fd);
 		exit(EXIT_FAILURE);
 	}
+
+	close(data_root_fd);
+	close(trash_root_fd);
 
 	exit(exit_status);
 }
