@@ -27,6 +27,26 @@ jobs:
         run: |
           make MPI_CXX_LIBS=-lmpi_cxx
 
-      - name: Run tests
-        run: |
-          make test EXTRA_MPIRUN_ARGS="--mca btl self,tcp --oversubscribe"
+      - name: Run tests (pretend)
+        run: ./tests/run_ci_target.sh pretend
+
+      - name: Run tests (normal)
+        run: ./tests/run_ci_target.sh normal
+
+      - name: Run tests (longpath)
+        run: ./tests/run_ci_target.sh longpath
+
+      - name: Run tests (externaltrash)
+        run: ./tests/run_ci_target.sh externaltrash
+
+      - name: Run tests (collision)
+        run: ./tests/run_ci_target.sh collision
+
+      - name: Run tests (safetyfail)
+        run: ./tests/run_ci_target.sh safetyfail
+
+      - name: Run tests (symlinkroots)
+        run: ./tests/run_ci_target.sh symlinkroots
+
+      - name: Run tests (argfail)
+        run: ./tests/run_ci_target.sh argfail
