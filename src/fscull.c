@@ -366,10 +366,10 @@ static int cull(const char *fpath) {
 			goto cleanup;
 		}
 
-			dst_parent_fd = open_dir_components(trash_root_fd, parent_rel, 1, 0700);
-			if (dst_parent_fd < 0) {
-				goto cleanup;
-			}
+		dst_parent_fd = open_dir_components(trash_root_fd, parent_rel, 1, 0700);
+		if (dst_parent_fd < 0) {
+			goto cleanup;
+		}
 	} else {
 		if (verbosity >= 3) {
 			fprintf(stdout, "pretend mode: skipping directory creation under: %s/%s\n", trash_root, parent_rel);
@@ -426,34 +426,24 @@ static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 			//} else {
 				return 0;
 			//}
-		case FTW_DNR:
-			//fpath is a directory which can't be read
-			fprintf(stderr, "*** ERROR *** unreadable directory: %s\n", fpath);
-			exit_status = EXIT_FAILURE;
-			return -1;
-		case FTW_NS:
-			//the stat(2) call failed on fpath, which is not a symbolic link
-			fprintf(stderr, "*** ERROR *** unstatable file: %s\n", fpath);
-			exit_status = EXIT_FAILURE;
-			return -1;
 		default: {
 			//(FTW_F)
 			//typically want to ignore symlinks
 			if (!S_ISLNK(sb->st_mode)) {
 				rc = cullable(sb, fpath);
 				if (rc > 0) {
-						if (cull(fpath)) {
-							exit_status = EXIT_FAILURE;
-						} else {
-							if (verbosity >= 1) {
-								fprintf(stdout, "culled file: %s\n", fpath);
-							}
+					if (cull(fpath)) {
+						exit_status = EXIT_FAILURE;
+					} else {
+						if (verbosity >= 1) {
+							fprintf(stdout, "culled file: %s\n", fpath);
 						}
-					} else if (rc == 0) {
-						if (verbosity >= 2) {
-							fprintf(stdout, "did not cull file: %s\n", fpath);
-						}
-					} else if (rc < 0) {
+					}
+				} else if (rc == 0) {
+					if (verbosity >= 2) {
+						fprintf(stdout, "did not cull file: %s\n", fpath);
+					}
+				} else if (rc < 0) {
 					fprintf(stderr, "*** ERROR *** failed to determine if file is cullable: %s\n", fpath);
 					exit_status = EXIT_FAILURE;
 					return -1;
