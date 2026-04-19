@@ -24,6 +24,10 @@ EXTRA_MPIRUN_ARGS = --mca btl self,tcp
 LONGPATH_DATA_ROOT = /tmp/fscull_longpath_test_data_root
 LONGPATH_TRASH_ROOT = /tmp/fscull_longpath_test_data_root/_trash
 EXTERNAL_TRASH_ROOT = external_trash_root
+SYMLINK_REAL_DATA_ROOT = symlink_root_real_data
+SYMLINK_REAL_TRASH_ROOT = symlink_root_real_trash
+SYMLINK_DATA_ROOT = symlink_root_data
+SYMLINK_TRASH_ROOT = symlink_root_trash
 COLLISION_LOG = collision_cull.log
 SAFETY_LOG = safety_fail.log
 
@@ -85,6 +89,12 @@ all:
 	@echo
 	@echo
 	@echo -------------------------------------------------------------------------------
+	@echo running symlink-root mode
+	@echo
+	$(MAKE) symlinkroots
+	@echo
+	@echo
+	@echo -------------------------------------------------------------------------------
 	@echo running argument-failure mode
 	@echo
 	$(MAKE) argfail
@@ -112,6 +122,9 @@ collision: clean env create_collision cull_collision verify_collision
 safetyfail: clean env create_safety cull_safety verify_safety
 	$(MAKE) clean
 
+symlinkroots: clean env create_symlinkroots cull_symlinkroots verify_symlinkroots
+	$(MAKE) clean
+
 argfail: clean env create argcheck
 	$(MAKE) clean
 
@@ -130,6 +143,11 @@ create_collision:
 
 create_safety:
 	./create_testdata.sh $(DATA_ROOT) $(TRASH_ROOT) $(RETENTION_WINDOW) --with-safety-failures
+
+create_symlinkroots:
+	./create_testdata.sh $(SYMLINK_REAL_DATA_ROOT) $(SYMLINK_REAL_TRASH_ROOT) $(RETENTION_WINDOW)
+	ln -s $(SYMLINK_REAL_DATA_ROOT) $(SYMLINK_DATA_ROOT)
+	ln -s $(SYMLINK_REAL_TRASH_ROOT) $(SYMLINK_TRASH_ROOT)
 
 cull:
 	mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
@@ -170,6 +188,13 @@ cull_safety:
 		cat $(SAFETY_LOG) >&2; \
 		exit 1; \
 	fi
+
+cull_symlinkroots:
+	mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS) \
+		fscull --data-root $(SYMLINK_DATA_ROOT) --trash-root $(SYMLINK_TRASH_ROOT) \
+		--retention-window $(RETENTION_WINDOW) \
+		`find $(SYMLINK_REAL_DATA_ROOT) -name exempt | xargs -n 1 echo --exempt-path` \
+		$(OPTS)
 
 verify:
 	test `find $(DATA_ROOT) -wholename $(TRASH_ROOT) -prune -o -name '*.keepme'   -print | wc -l` -eq $(NUM_KEEPME)
@@ -231,6 +256,18 @@ verify_safety:
 	grep -qi 'file exists' $(SAFETY_LOG)
 	grep -qi 'too many levels of symbolic links' $(SAFETY_LOG)
 
+verify_symlinkroots:
+	test -L $(SYMLINK_DATA_ROOT)
+	test -L $(SYMLINK_TRASH_ROOT)
+	test `find $(SYMLINK_REAL_DATA_ROOT) -wholename $(SYMLINK_REAL_TRASH_ROOT) -prune -o -name '*.keepme'   -print | wc -l` -eq $(NUM_KEEPME)
+	test `find $(SYMLINK_REAL_DATA_ROOT) -wholename $(SYMLINK_REAL_TRASH_ROOT) -prune -o -name '*.deleteme' -print | wc -l` -eq 0
+	test ! -e $(SYMLINK_REAL_DATA_ROOT)/exempt-sibling/prefix_bug.deleteme
+	test -e $(SYMLINK_REAL_TRASH_ROOT)/exempt-sibling/prefix_bug.deleteme
+	test -L $(SYMLINK_REAL_DATA_ROOT)/foo.symlink
+	test ! -e $(SYMLINK_REAL_TRASH_ROOT)/foo.symlink
+	test `find $(SYMLINK_REAL_TRASH_ROOT) -name '*.keepme'   | wc -l` -eq 0
+	test `find $(SYMLINK_REAL_TRASH_ROOT) -name '*.deleteme' | wc -l` -eq $(NUM_DELETEME)
+
 argcheck:
 	@set -e; \
 	if fscull >/dev/null 2>&1; then \
@@ -249,6 +286,18 @@ argcheck:
 		echo '*** ERROR *** expected invalid --retention-window to fail' >&2; \
 		exit 1; \
 	fi; \
+	if fscull --data-root $(DATA_ROOT) --trash-root $(TRASH_ROOT) --retention-window 0 >/dev/null 2>&1; then \
+		echo '*** ERROR *** expected zero --retention-window to fail' >&2; \
+		exit 1; \
+	fi; \
+	if fscull --data-root $(DATA_ROOT) --trash-root $(TRASH_ROOT) --retention-window -5 >/dev/null 2>&1; then \
+		echo '*** ERROR *** expected negative --retention-window to fail' >&2; \
+		exit 1; \
+	fi; \
+	if fscull --data-root $(DATA_ROOT) --trash-root $(TRASH_ROOT) --retention-window 99999999999999999999 >/dev/null 2>&1; then \
+		echo '*** ERROR *** expected overflowing --retention-window to fail' >&2; \
+		exit 1; \
+	fi; \
 	if fscull --data-root $(DATA_ROOT)-missing --trash-root $(TRASH_ROOT) --retention-window 1 >/dev/null 2>&1; then \
 		echo '*** ERROR *** expected missing data root to fail' >&2; \
 		exit 1; \
@@ -261,6 +310,13 @@ argcheck:
 		echo '*** ERROR *** expected missing --exempt-path to fail' >&2; \
 		exit 1; \
 	fi; \
+	OUTSIDE_EXEMPT=$$(mktemp -d /tmp/fscull_outside_exempt.XXXXXX); \
+	if fscull --data-root $(DATA_ROOT) --trash-root $(TRASH_ROOT) --retention-window 1 --exempt-path "$$OUTSIDE_EXEMPT" >/dev/null 2>&1; then \
+		echo '*** ERROR *** expected out-of-tree --exempt-path to fail' >&2; \
+		rm -rf -- "$$OUTSIDE_EXEMPT"; \
+		exit 1; \
+	fi; \
+	rm -rf -- "$$OUTSIDE_EXEMPT"; \
 	if fscull --data-root $(DATA_ROOT)/foo.keepme --trash-root $(TRASH_ROOT) --retention-window 1 >/dev/null 2>&1; then \
 		echo '*** ERROR *** expected non-directory data root to fail' >&2; \
 		exit 1; \
@@ -294,6 +350,9 @@ argcheck:
 
 clean:
 	./remove_testdata.sh $(DATA_ROOT) $(TRASH_ROOT)
+	./remove_testdata.sh $(SYMLINK_REAL_DATA_ROOT) $(SYMLINK_REAL_TRASH_ROOT)
+	rm -f $(SYMLINK_DATA_ROOT)
+	rm -f $(SYMLINK_TRASH_ROOT)
 	rm -f $(COLLISION_LOG)
 	rm -f $(SAFETY_LOG)
 

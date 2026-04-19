@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #define _XOPEN_SOURCE 700
 
 /*
@@ -16,6 +17,7 @@ All rights reserved.
 #include <time.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <limits.h>
 #include <getopt.h>
@@ -41,11 +43,11 @@ static char *helpstr = \
 
 //absolute path to the data directory
 static char *data_root = NULL;
-static int data_root_l = 0;  //its strlen (not including the null)
+static size_t data_root_l = 0;  //its strlen (not including the null)
 
 //absolute path to the trash directory
 static char *trash_root = NULL;
-static int trash_root_l = 0;  //its strlen (not including the null)
+static size_t trash_root_l = 0;  //its strlen (not including the null)
 static int data_root_fd = -1;
 static int trash_root_fd = -1;
 
@@ -66,6 +68,10 @@ char verbosity = 0;
 static int MAX_EXEMPT_PATHS = 4096;
 static char **exempt_paths = NULL;
 static int exempt_paths_l = 0;
+
+#ifndef RENAME_NOREPLACE
+#define RENAME_NOREPLACE (1U << 0)
+#endif
 
 
 //--- helpers
@@ -129,7 +135,7 @@ static int open_directory_at(int dirfd, const char *path) {
 	return check_directory_fd(fd, path);
 }
 
-static int init_root_directory(const char *input_path, char **resolved_path, int *resolved_len, int *dirfd_out, struct stat *st_out) {
+static int init_root_directory(const char *input_path, char **resolved_path, size_t *resolved_len, int *dirfd_out, struct stat *st_out) {
 	char *resolved;
 	int fd;
 
@@ -139,7 +145,7 @@ static int init_root_directory(const char *input_path, char **resolved_path, int
 		return -1;
 	}
 
-	fd = open_directory(input_path);
+	fd = open_directory(resolved);
 	if (fd < 0) {
 		free(resolved);
 		return -1;
@@ -155,6 +161,30 @@ static int init_root_directory(const char *input_path, char **resolved_path, int
 	*resolved_path = resolved;
 	*resolved_len = strlen(resolved);
 	*dirfd_out = fd;
+	return 0;
+}
+
+static int move_file_noreplace(int src_parent_fd, const char *leafname, int dst_parent_fd) {
+#if defined(__linux__) && defined(SYS_renameat2)
+	if (syscall(SYS_renameat2, src_parent_fd, leafname, dst_parent_fd, leafname, RENAME_NOREPLACE) == 0) {
+		return 0;
+	}
+	if (errno != ENOSYS && errno != EINVAL) {
+		return -1;
+	}
+#endif
+
+	/*
+	 * linkat() + unlinkat() preserves the no-overwrite guarantee on older
+	 * kernels, though a source-unlink failure can leave the file linked in
+	 * both locations.
+	 */
+	if (linkat(src_parent_fd, leafname, dst_parent_fd, leafname, 0) != 0) {
+		return -1;
+	}
+	if (unlinkat(src_parent_fd, leafname, 0) != 0) {
+		return -1;
+	}
 	return 0;
 }
 
@@ -229,13 +259,18 @@ static char exempt(const struct stat *sb, const char *fpath) {
 	 */
 
 	int i = 0;
-	for (i==0; i<exempt_paths_l; i++) {
+	(void)sb;
+	for (i = 0; i < exempt_paths_l; i++) {
 		if (path_is_same_or_descendant(fpath, exempt_paths[i])) {
-			verbosity>=3 && fprintf(stdout, "exempt file: %s\n", fpath);
+			if (verbosity >= 3) {
+				fprintf(stdout, "exempt file: %s\n", fpath);
+			}
 			return 1;
 		}
 	}
-	verbosity>=3 && fprintf(stdout, "non-exempt file: %s\n", fpath);
+	if (verbosity >= 3) {
+		fprintf(stdout, "non-exempt file: %s\n", fpath);
+	}
 	return 0;
 }
 
@@ -249,10 +284,14 @@ static char cullable(const struct stat *sb, const char *fpath) {
 	 */
 
 	if ( (t_now - sb->st_mtime) > retention_window && exempt(sb, fpath)==0 ) {
-		verbosity>=3 && fprintf(stdout, "cullable file: %s\n", fpath);
+		if (verbosity >= 3) {
+			fprintf(stdout, "cullable file: %s\n", fpath);
+		}
 		return 1;
 	}
-	verbosity>=3 && fprintf(stdout, "non-cullable file: %s\n", fpath);
+	if (verbosity >= 3) {
+		fprintf(stdout, "non-cullable file: %s\n", fpath);
+	}
 	return 0;
 }
 
@@ -270,14 +309,10 @@ static int cull(const char *fpath) {
 	const char *relative_path;
 	const char *leafname;
 	const char *last_sep;
-	size_t fpath_l;
 	size_t parent_rel_l;
 	int src_parent_fd = -1;
 	int dst_parent_fd = -1;
 	int rc = -1;
-
-	fpath_l = strlen(fpath);
-
 
 	//--- compute the destination path in trash (tpath) -- substitute leading data_path with trash_path
 
@@ -331,36 +366,28 @@ static int cull(const char *fpath) {
 			goto cleanup;
 		}
 
-		dst_parent_fd = open_dir_components(trash_root_fd, parent_rel, 1, 0700);
-		if (dst_parent_fd < 0) {
-			goto cleanup;
-		}
+			dst_parent_fd = open_dir_components(trash_root_fd, parent_rel, 1, 0700);
+			if (dst_parent_fd < 0) {
+				goto cleanup;
+			}
 	} else {
-		verbosity>=3 && fprintf(stdout, "pretend mode: skipping directory creation under: %s/%s\n", trash_root, parent_rel);
+		if (verbosity >= 3) {
+			fprintf(stdout, "pretend mode: skipping directory creation under: %s/%s\n", trash_root, parent_rel);
+		}
 	}
 
 
 	//--- move the file
 
 	if (!pretend) {
-		struct stat st;
-
-		if (fstatat(dst_parent_fd, leafname, &st, AT_SYMLINK_NOFOLLOW) == 0) {
-			errno = EEXIST;
-			perror(fpath);
-			goto cleanup;
-		}
-		if (errno != ENOENT) {
-			perror(fpath);
-			goto cleanup;
-		}
-
-		if (renameat(src_parent_fd, leafname, dst_parent_fd, leafname)) {
+		if (move_file_noreplace(src_parent_fd, leafname, dst_parent_fd) != 0) {
 			perror(fpath);
 			goto cleanup;
 		}
 	} else {
-		verbosity>=3 && fprintf(stdout, "pretend mode: skipping file move: %s -> %s/%s\n", fpath, trash_root, relative_path);
+		if (verbosity >= 3) {
+			fprintf(stdout, "pretend mode: skipping file move: %s -> %s/%s\n", fpath, trash_root, relative_path);
+		}
 	}
 
 	rc = 0;
@@ -383,6 +410,7 @@ cleanup:
 //see ftw(3) man page (dftw is basically identical)
 static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 	int rc = 0;
+	(void)kv;
 
 	switch (tflag) {
 		case FTW_D:
@@ -414,14 +442,18 @@ static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 			if (!S_ISLNK(sb->st_mode)) {
 				rc = cullable(sb, fpath);
 				if (rc > 0) {
-					if (cull(fpath)) {
-						exit_status = EXIT_FAILURE;
-					} else {
-						verbosity>=1 && fprintf(stdout, "culled file: %s\n", fpath);
-					}
-				} else if (rc == 0) {
-					verbosity>=2 && fprintf(stdout, "did not cull file: %s\n", fpath);
-				} else if (rc < 0) {
+						if (cull(fpath)) {
+							exit_status = EXIT_FAILURE;
+						} else {
+							if (verbosity >= 1) {
+								fprintf(stdout, "culled file: %s\n", fpath);
+							}
+						}
+					} else if (rc == 0) {
+						if (verbosity >= 2) {
+							fprintf(stdout, "did not cull file: %s\n", fpath);
+						}
+					} else if (rc < 0) {
 					fprintf(stderr, "*** ERROR *** failed to determine if file is cullable: %s\n", fpath);
 					exit_status = EXIT_FAILURE;
 					return -1;
@@ -439,6 +471,11 @@ static int map(const char *fpath, const struct stat *sb, int tflag, void *kv) {
 //the reduce function
 //see http://mapreduce.sandia.gov/doc/reduce.html
 static void reduce(char *key, int keybytes, char *multivalue, int nvalues, int *valuebytes) {
+	(void)key;
+	(void)keybytes;
+	(void)multivalue;
+	(void)nvalues;
+	(void)valuebytes;
 }
 
 
@@ -557,6 +594,18 @@ int main(int argc, char **argv) {
 		exit(EXIT_FAILURE);
 	}
 
+	{
+		int i = 0;
+		for (i = 0; i < exempt_paths_l; i++) {
+			if (!path_is_same_or_descendant(exempt_paths[i], data_root)) {
+				fprintf(stderr, "*** ERROR *** --exempt-path must resolve within --data-root: %s\n", exempt_paths[i]);
+				close(data_root_fd);
+				close(trash_root_fd);
+				exit(EXIT_FAILURE);
+			}
+		}
+	}
+
 	//reset argc/argv, forgetting about options above
 	argv[optind-1] = argv[0];
 	argv += (optind - 1);
@@ -568,7 +617,9 @@ int main(int argc, char **argv) {
 		exit(EXIT_FAILURE);
 	} else {
 		if ( path_is_same_or_descendant(trash_root, data_root) ) {
-			verbosity>=3 && fprintf(stdout, "trash_root is a subdirectory of data_root, exempting\n");
+			if (verbosity >= 3) {
+				fprintf(stdout, "trash_root is a subdirectory of data_root, exempting\n");
+			}
 			exempt_paths[exempt_paths_l] = trash_root;
 			exempt_paths_l++;
 		}
@@ -578,17 +629,17 @@ int main(int argc, char **argv) {
 	//---
 
 	//repeat the basic parameters
-	if (verbosity>=0) {
-		fprintf(stdout, "running with:\n");
-		fprintf(stdout, "    --data-root: %s\n", data_root);
-		fprintf(stdout, "    --trash-root: %s\n", trash_root);
+	fprintf(stdout, "running with:\n");
+	fprintf(stdout, "    --data-root: %s\n", data_root);
+	fprintf(stdout, "    --trash-root: %s\n", trash_root);
+	{
 		int i = 0;
-		for (i==0; i<exempt_paths_l; i++) {
+		for (i = 0; i < exempt_paths_l; i++) {
 			fprintf(stdout, "    an --exempt-path: %s\n", exempt_paths[i]);
 		}
-		fprintf(stdout, "    --retention-window: %lld\n", (long long)retention_window);
-		fprintf(stdout, "    verbosity: %d\n", verbosity);
 	}
+	fprintf(stdout, "    --retention-window: %lld\n", (long long)retention_window);
+	fprintf(stdout, "    verbosity: %d\n", verbosity);
 
 	//get the current time, for calculating file age
 	//set this once at the beginning, so all ages are computed using the same standard and the window doesn't roll
@@ -596,7 +647,7 @@ int main(int argc, char **argv) {
 	time(&t_now);
 	if (t_now <= 0) {
 		fprintf(stderr, "*** ERROR *** time() failed: errno %d\n", errno);
-		exit(errno);
+		exit(EXIT_FAILURE);
 	}
 
 	if (fsmr(data_root, map, reduce)) {
