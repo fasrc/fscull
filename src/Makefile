@@ -6,6 +6,7 @@ AR ?= ar
 CFLAGS += -fPIC
 CPPFLAGS +=
 LDFLAGS +=
+LOCAL_WARN_CFLAGS ?= -Wall -Wextra -Wunused-value
 SUBMAKE = $(MAKE) MAKEFLAGS=
 
 ifneq ($(shell command -v $(CXX) >/dev/null 2>&1; echo $$?),0)
@@ -64,7 +65,8 @@ LIBDFTW_LDFLAGS := -L$(VENDOR_PREFIX)/lib
 MPI_CXX_LIBS ?= 
 STATIC_LIBS ?= $(MPI_CXX_LIBS) -lstdc++ -lm
 
-PROGS = fscull retention
+PROGS = fscull
+LEGACY_PROGS = retention
 
 .PHONY: all clean
 
@@ -76,12 +78,9 @@ all: $(PROGS)
 $(PROGS): $(FSMR_A) $(LIBDFTW_A) $(LIBCIRCLE_A) $(MRMPI_DEP)
 
 %.o: %.c $(FSMR_A)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LOCAL_WARN_CFLAGS) -c $< -o $@
 
 fscull: fscull.o
-	$(CC) $(LDFLAGS) $< $(FSMR_A) $(LIBDFTW_A) $(LIBCIRCLE_A) $(MRMPI_DEP) $(STATIC_LIBS) -o $@
-
-retention: retention.o
 	$(CC) $(LDFLAGS) $< $(FSMR_A) $(LIBDFTW_A) $(LIBCIRCLE_A) $(MRMPI_DEP) $(STATIC_LIBS) -o $@
 
 $(FSMR_A): $(LIBDFTW_A) $(MRMPI_DEP) $(FSMR_DIR)/Makefile $(FSMR_DIR)/fsmr.c $(FSMR_DIR)/fsmr.h
@@ -134,4 +133,4 @@ $(LIBDFTW_BOOTSTRAP): $(LIBDFTW_DIR)/configure.ac $(LIBDFTW_DIR)/Makefile.am
 #--- cleaning
 
 clean:
-	rm -f $(PROGS) *.o $(LIBCIRCLE_BOOTSTRAP) $(LIBDFTW_BOOTSTRAP)
+	rm -f $(PROGS) $(LEGACY_PROGS) *.o $(LIBCIRCLE_BOOTSTRAP) $(LIBDFTW_BOOTSTRAP)

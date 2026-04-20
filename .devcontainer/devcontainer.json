@@ -1,0 +1,16 @@
+{
+	"name": "Ubuntu",
+	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+	"image": "mcr.microsoft.com/devcontainers/base:noble",
+	"features": {
+		"ghcr.io/devcontainers-extra/features/apt-packages:1": {
+			"packages": "autoconf,automake,libtool,libopenmpi-dev,openmpi-bin,pkg-config"
+		}
+	},
+	"postCreateCommand": "git submodule update --init --recursive",
+	"remoteUser": "root", 	// for rootless podman
+	"containerEnv": 
+	{
+		"MPI_CXX_LIBS": "-lmpi_cxx",
+	}
+}

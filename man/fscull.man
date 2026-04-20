@@ -21,6 +21,10 @@ fscull \- distributed filesystem data retention policy enforcement
 fscull walks a filesystem and moves files older than a specified age to a trash bin.
 It's a distributed application using MPI (really just a wrapper around rename(2), which is then used as the map in fsmr mapreduce).
 It's meant to be deployed on HPC storage such as Lustre, where it can use 100s of processes to scan and move 100s of millions of files on a scale of hours.
+The trash root must live on the same filesystem as the data root.
+The data root and trash root are canonicalized at startup, so either argument may itself be a symlink.
+If the trash root or an exempt path lives beneath the data root, that subtree is pruned from traversal automatically.
+Symlink path components beneath those roots are rejected while opening source and trash directories, so files are never moved through symlinked directory hops.
 
 
 .SH OPTIONS
@@ -32,6 +36,7 @@ The top-level directory to recursively cull.
 .TP
 .BR \-t ", " \-\-trash\-root " PATH"
 The trash bin directory, where purged files go.
+It must already exist and be on the same filesystem as the data root.
 
 .TP
 .BR \-w ", " \-\-retention\-window " SECONDS"
@@ -44,6 +49,7 @@ A path that's exempt from culling.
 This should be a directory, though it's not implemented as that yet.
 May be used multiple times, to exempt several directories.
 Due to the limitations of how this is coded, the directories must all exist.
+Each exempt path must resolve within the data root.
 
 .TP
 .BR \-p ", " \-\-pretend
@@ -74,8 +80,6 @@ fsmr -- https://github.com/jabrcx/fsmr
 Add an option to immediately delete rather than move to trash.
 .IP \(bu
 Find a better way to compute absolute paths of --exempt-path and other arguments that doesn't require they already exist (but also allow them to pop into existence later).
-.IP \(bu
-Patch dftw to be able to not even enter --exempt-path directories.
 .IP \(bu
 Add additional criteria, e.g. size, owner, group, etc.
 

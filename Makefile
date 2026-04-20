@@ -14,7 +14,7 @@ MANDIR := $(DESTDIR)$(PREFIX)/share/man/man1
 DOCDIR := $(DESTDIR)$(PREFIX)/share/doc/fscull
 TESTS_INSTALL_DIR := $(DESTDIR)$(PREFIX)/share/tests/fscull
 
-.PHONY: all test install distclean
+.PHONY: all test install clean distclean
 all:
 	$(MAKE) -C $(SRC_DIR)
 
@@ -35,9 +35,14 @@ install:
 	$(INSTALL_PROGRAM) "$(TESTS_DIR)/env_check.sh" "$(TESTS_INSTALL_DIR)/env_check.sh"
 	$(INSTALL_PROGRAM) "$(TESTS_DIR)/remove_testdata.sh" "$(TESTS_INSTALL_DIR)/remove_testdata.sh"
 
-distclean:
+clean:
 	$(MAKE) -C $(SRC_DIR) clean
+	$(MAKE) -C $(TESTS_DIR) clean
+
+distclean:
+	$(MAKE) clean
 	rm -rf "$(abspath vendor/.local)"
+	git submodule foreach --recursive 'git clean -xfd'
 
 %:
 	$(MAKE) -C $(SRC_DIR) $@
