@@ -27,6 +27,8 @@ jobs:
         run: |
           make MPI_CXX_LIBS=-lmpi_cxx
 
+# use vader (aka sm) BTL to avoid apparent network-interface-selction-related
+# hangs on GA runner observed with tcp BTL
       - name: Run tests
         run: |
-          make test
+          make test EXTRA_MPIRUN_ARGS='--mca btl self,vader'
