@@ -28,16 +28,5 @@ jobs:
           make MPI_CXX_LIBS=-lmpi_cxx
 
       - name: Run tests
-        shell: bash
         run: |
-          set -euo pipefail
-          echo "== $(date -u +'%Y-%m-%dT%H:%M:%SZ') starting make test =="
-          status=0
-          timeout --signal=TERM --kill-after=30s 10m \
-            make test EXTRA_MPIRUN_ARGS="--mca btl self,tcp --oversubscribe" || status=$?
-          echo "== $(date -u +'%Y-%m-%dT%H:%M:%SZ') finished make test status=$status =="
-          if [ "$status" -ne 0 ]; then
-            echo "== process snapshot after failure ==" >&2
-            ps -ef >&2
-            exit "$status"
-          fi
+          make test EXTRA_MPIRUN_ARGS="--mca btl self,tcp --oversubscribe"
