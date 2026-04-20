@@ -1,10 +1,27 @@
-name: Build and Test
+name: Debug MPI Hang
 
-on: [push, workflow_dispatch]
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Test target to run repeatedly
+        default: safetyfail
+        required: true
+        type: string
+      attempts:
+        description: Number of attempts before giving up
+        default: "5"
+        required: true
+        type: string
+      idle_seconds:
+        description: Seconds with no log growth before collecting diagnostics
+        default: "45"
+        required: true
+        type: string
 
 jobs:
-  build-test:
-    runs-on: ubuntu-latest
+  debug-hang:
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -12,7 +29,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install OpenMPI and Build Tools
+      - name: Install OpenMPI and Debug Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -21,12 +38,135 @@ jobs:
             autoconf \
             automake \
             libtool \
-            pkg-config
+            pkg-config \
+            iproute2 \
+            procps \
+            psmisc \
+            strace
 
       - name: Build fscull
         run: |
           make MPI_CXX_LIBS=-lmpi_cxx
 
-      - name: Run tests
+      - name: Record environment
         run: |
-          make test
+          mkdir -p ci-debug
+          uname -a | tee ci-debug/uname.txt
+          cat /etc/os-release | tee ci-debug/os-release.txt
+          mpirun --version | tee ci-debug/mpirun-version.txt
+          ompi_info --version | tee ci-debug/ompi-version.txt
+          dpkg -l | grep -i openmpi | tee ci-debug/openmpi-packages.txt
+
+      - name: Reproduce and diagnose hang
+        shell: bash
+        env:
+          TEST_TARGET: ${{ inputs.target }}
+          ATTEMPTS: ${{ inputs.attempts }}
+          IDLE_SECONDS: ${{ inputs.idle_seconds }}
+          EXTRA_MPIRUN_ARGS: --mca btl self,tcp --oversubscribe --tag-output --output-filename mpi.out
+        run: |
+          set -euo pipefail
+
+          export PATH="$GITHUB_WORKSPACE/src:$PATH"
+          export MANPATH="$GITHUB_WORKSPACE/man:${MANPATH:-}"
+
+          mkdir -p ci-debug
+
+          collect_diagnostics() {
+            local attempt_dir="$1"
+            local pids
+
+            date -u | tee "$attempt_dir/date.txt"
+            ps -ef | tee "$attempt_dir/ps-ef.txt" || true
+            pstree -ap | tee "$attempt_dir/pstree.txt" || true
+            ss -tanp | tee "$attempt_dir/ss-tanp.txt" || true
+            pgrep -af 'mpirun|fscull|orted|prte|pmix' | tee "$attempt_dir/pgrep.txt" || true
+
+            pids="$(pgrep -f 'mpirun|fscull|orted|prte|pmix' || true)"
+            for pid in $pids; do
+              {
+                echo "=== PID $pid cmdline ==="
+                tr '\0' ' ' </proc/"$pid"/cmdline || true
+                echo
+                echo "=== PID $pid wchan ==="
+                cat /proc/"$pid"/wchan || true
+                echo
+                echo "=== PID $pid stack ==="
+                cat /proc/"$pid"/stack || true
+                echo
+                echo "=== PID $pid status ==="
+                cat /proc/"$pid"/status || true
+              } >"$attempt_dir/proc-$pid.txt" 2>&1
+
+              timeout 5s strace -ff -tt -o "$attempt_dir/strace-$pid" -p "$pid" || true
+            done
+          }
+
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            attempt_dir="ci-debug/attempt-$attempt"
+            log="$attempt_dir/$TEST_TARGET.log"
+            mkdir -p "$attempt_dir"
+
+            echo "=== attempt $attempt / $ATTEMPTS target=$TEST_TARGET ===" | tee "$attempt_dir/meta.txt"
+            date -u | tee -a "$attempt_dir/meta.txt"
+
+            make -C tests clean || true
+            rm -rf tests/mpi.out mpi.out
+
+            set +e
+            make -C tests "$TEST_TARGET" EXTRA_MPIRUN_ARGS="$EXTRA_MPIRUN_ARGS" >"$log" 2>&1 &
+            cmd_pid=$!
+            set -e
+
+            last_size=0
+            last_change=$(date +%s)
+            stalled=0
+
+            while kill -0 "$cmd_pid" 2>/dev/null; do
+              sleep 5
+              size=$(wc -c <"$log" 2>/dev/null || echo 0)
+              if [ "$size" -ne "$last_size" ]; then
+                last_size="$size"
+                last_change=$(date +%s)
+              fi
+
+              now=$(date +%s)
+              if [ $((now - last_change)) -ge "$IDLE_SECONDS" ]; then
+                echo "No log growth for $IDLE_SECONDS seconds; collecting diagnostics" | tee -a "$log"
+                stalled=1
+                collect_diagnostics "$attempt_dir"
+
+                pkill -TERM -P "$cmd_pid" || true
+                kill -TERM "$cmd_pid" || true
+                sleep 5
+                pkill -KILL -P "$cmd_pid" || true
+                kill -KILL "$cmd_pid" || true
+                break
+              fi
+            done
+
+            set +e
+            wait "$cmd_pid"
+            status=$?
+            set -e
+
+            printf '%s\n' "$status" >"$attempt_dir/exit-status.txt"
+
+            if [ -e tests/mpi.out ]; then
+              mv tests/mpi.out "$attempt_dir/mpi.out"
+            fi
+
+            if [ "$stalled" -eq 1 ]; then
+              echo "Detected stalled run on attempt $attempt" >&2
+              exit 1
+            fi
+          done
+
+      - name: Upload debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-mpi-hang-${{ github.run_id }}
+          path: |
+            ci-debug/**
+            tests/mpi.out*
