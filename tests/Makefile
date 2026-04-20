@@ -24,7 +24,10 @@ EXTRA_MPIRUN_ARGS = --mca btl self,tcp
 # Keep ranks running to completion when Open MPI is used as the launcher. The
 # failure-mode tests validate filesystem and log outcomes instead of mpirun's
 # exit code.
-MPIRUN_ENV = OMPI_MCA_orte_abort_on_non_zero_status=0 PRTE_MCA_state_base_error_non_zero_exit=0
+MPIRUN_ENV = OMPI_ALLOW_RUN_AS_ROOT=1 \
+			 OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1 \
+             OMPI_MCA_orte_abort_on_non_zero_status=0 \
+             PRTE_MCA_state_base_error_non_zero_exit=0 
 MPI_LAUNCH = env $(MPIRUN_ENV) mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS)
 
 LONGPATH_DATA_ROOT = /tmp/fscull_longpath_test_data_root
