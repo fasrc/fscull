@@ -21,12 +21,11 @@ NPROCS = 3
 EXTRA_MPIRUN_ARGS = --mca btl self,tcp
 #EXTRA_MPIRUN_ARGS = $(EXTRA_MPIRUN_ARGS) --output-filename out --tag-output
 
-# Keep ranks running to completion when Open MPI is used as the launcher. The
-# failure-mode tests validate filesystem and log outcomes instead of mpirun's
-# exit code.
 MPIRUN_ENV = OMPI_ALLOW_RUN_AS_ROOT=1 \
-			 OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1 \
+             OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1 \
              OMPI_MCA_orte_abort_on_non_zero_status=0 \
+             OMPI_MCA_rmaps_base_oversubscribe=1 \
+             PRTE_MCA_rmaps_default_mapping_policy=:oversubscribe \
              PRTE_MCA_state_base_error_non_zero_exit=0 
 MPI_LAUNCH = env $(MPIRUN_ENV) mpirun -np $(NPROCS) $(EXTRA_MPIRUN_ARGS)
 
