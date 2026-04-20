@@ -1,0 +1,11 @@
+prefix=/workspaces/fscull/vendor/.local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: LibDftw
+Description: A distributed file treewalk similiar to ftw(3).
+Version: 0.0.2
+URL: http://github.com/hpc/libdftw
+Libs: -L${libdir} -ldftw
+Cflags: -I${includedir}/

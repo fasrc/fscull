@@ -1,0 +1,11 @@
+prefix=/workspaces/fscull/vendor/.local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: LibCircle
+Description: A simple interface for processing workloads using an automatically distributed global queue.
+Version: 0.3.0
+URL: http://github.com/hpc/libcircle
+Libs: -L${libdir} -lcircle
+Cflags: -I${includedir}/
